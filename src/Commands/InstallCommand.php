@@ -1,6 +1,8 @@
 <?php
 
-namespace denis660\Centrifugo\Commands;
+declare(strict_types=1);
+
+namespace Jestays\Centrifugo\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Arr;
@@ -8,77 +10,57 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Attribute\AsCommand;
 
-#[AsCommand(name: 'centrifuge:install')]
-class InstallCommand extends Command
+#[AsCommand(name: 'centrifugo:install')]
+final class InstallCommand extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'centrifuge:install';
+    protected $signature = 'centrifugo:install';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Install the Centrifuge dependencies';
+    protected $description = 'Install the Centrifugo broadcasting driver';
 
-    /**
-     * Execute the console command.
-     */
     public function handle(): void
     {
+        $this->call('vendor:publish', ['--tag' => 'centrifugo-config']);
+
         $this->addEnvironmentVariables();
         $this->ensureBroadcastingIsInstalled();
         $this->updateBroadcastingConfiguration();
-        $this->updateBroadcastingDriver();
+        $this->updateBroadcastConnection();
+        $this->printSummary();
 
-        $this->components->info('Centrifuge Laravel  installed successfully.');
+        $this->components->info('Centrifugo Laravel installed successfully.');
     }
 
-    /**
-     * Add the Centrifuge-laravel variables to the environment file.
-     */
     protected function addEnvironmentVariables(): void
     {
         if (File::missing($env = app()->environmentFile())) {
             return;
         }
+
         $contents = File::get($env);
 
-        $token_hmac_secret_key = Str::uuid()->toString();
-        $api_key = Str::uuid()->toString();
-
-
         $variables = Arr::where([
-            'CENTRIFUGO_TOKEN_HMAC_SECRET_KEY' => "CENTRIFUGO_TOKEN_HMAC_SECRET_KEY={$token_hmac_secret_key}",
-            'CENTRIFUGO_API_KEY' => "CENTRIFUGO_API_KEY={$api_key}",
             'CENTRIFUGO_URL' => 'CENTRIFUGO_URL="http://localhost:8000"',
-        ], function ($value, $key) use ($contents) {
-            return ! Str::contains($contents, PHP_EOL.$key);
-        });
+            'CENTRIFUGO_API_KEY' => 'CENTRIFUGO_API_KEY='.Str::uuid()->toString(),
+            'CENTRIFUGO_TOKEN_HMAC_SECRET_KEY' => 'CENTRIFUGO_TOKEN_HMAC_SECRET_KEY='.Str::uuid()->toString(),
+            'CENTRIFUGO_APP' => 'CENTRIFUGO_APP=',
+        ], fn ($value, $key) => ! Str::contains($contents, PHP_EOL.$key));
 
-        $variables = trim(implode(PHP_EOL, $variables));
-
-        if ($variables === '') {
+        if ($variables === []) {
             return;
         }
 
         File::append(
             $env,
-            Str::endsWith($contents, PHP_EOL) ? PHP_EOL.$variables.PHP_EOL : PHP_EOL.PHP_EOL.$variables.PHP_EOL,
+            (Str::endsWith($contents, PHP_EOL) ? PHP_EOL : PHP_EOL.PHP_EOL).implode(PHP_EOL, $variables).PHP_EOL,
         );
+
+        if (array_key_exists('CENTRIFUGO_APP', $variables)) {
+            $this->components->warn('CENTRIFUGO_APP was added empty. Set a unique identifier for this application, e.g. CENTRIFUGO_APP=pos.');
+        }
     }
 
-    /**
-     * Ensure Laravel broadcasting is installed for the current app structure.
-     */
     protected function ensureBroadcastingIsInstalled(): void
     {
-        $this->enableBroadcastServiceProvider();
-
         $broadcastingConfig = app()->configPath('broadcasting.php');
 
         if (File::exists($broadcastingConfig) && File::exists(base_path('routes/channels.php'))) {
@@ -89,18 +71,13 @@ class InstallCommand extends Command
             return;
         }
 
-        $enable = $this->confirm('Would you like to enable event broadcasting?', true);
-
-        if (! $enable) {
+        if (! $this->confirm('Would you like to enable event broadcasting?', true)) {
             return;
         }
 
-        $this->call('install:broadcasting', $this->broadcastingInstallOptions());
+        $this->call('install:broadcasting', ['--no-interaction' => true]);
     }
 
-    /**
-     * Update the broadcasting.php configuration file.
-     */
     protected function updateBroadcastingConfiguration(): void
     {
         $broadcastingConfig = app()->configPath('broadcasting.php');
@@ -114,54 +91,20 @@ class InstallCommand extends Command
         $contents = File::get($broadcastingConfig);
         $updated = $this->injectCentrifugoConnection($contents);
 
-        if ($updated === $contents) {
-            return;
-        }
-
-        File::put($broadcastingConfig, $updated);
-    }
-
-    /**
-     * Uncomment the "BroadcastServiceProvider" in the application configuration.
-     */
-    protected function enableBroadcastServiceProvider(): void
-    {
-        $appConfig = app()->configPath('app.php');
-
-        if (File::missing($appConfig)) {
-            return;
-        }
-
-        $config = File::get($appConfig);
-
-        if (Str::contains($config, '// App\Providers\BroadcastServiceProvider::class')) {
-            File::replaceInFile(
-                '// App\Providers\BroadcastServiceProvider::class',
-                'App\Providers\BroadcastServiceProvider::class',
-                $appConfig,
-            );
+        if ($updated !== $contents) {
+            File::put($broadcastingConfig, $updated);
         }
     }
 
-    /**
-     * Update the configured broadcasting driver.
-     */
-    protected function updateBroadcastingDriver(): void
+    protected function updateBroadcastConnection(): void
     {
         if (File::missing($env = app()->environmentFile())) {
             return;
         }
 
-        $contents = File::get($env);
-        $contents = $this->upsertEnvironmentVariable($contents, 'BROADCAST_DRIVER', 'centrifugo');
-        $contents = $this->upsertEnvironmentVariable($contents, 'BROADCAST_CONNECTION', 'centrifugo');
-
-        File::put($env, $contents);
+        File::put($env, $this->upsertEnvironmentVariable(File::get($env), 'BROADCAST_CONNECTION', 'centrifugo'));
     }
 
-    /**
-     * Inject the Centrifugo connection into the broadcasting config contents.
-     */
     protected function injectCentrifugoConnection(string $contents): string
     {
         if (Str::contains($contents, "'centrifugo' => [")) {
@@ -172,11 +115,6 @@ class InstallCommand extends Command
 
         'centrifugo' => [
             'driver' => 'centrifugo',
-            'token_hmac_secret_key' => env('CENTRIFUGO_TOKEN_HMAC_SECRET_KEY'),
-            'api_key' => env('CENTRIFUGO_API_KEY'),
-            'url' => env('CENTRIFUGO_URL', 'http://localhost:8000'), // centrifugo api url
-            'verify' => env('CENTRIFUGO_VERIFY', false), // Verify host ssl if centrifugo uses this
-            'ssl_key' => env('CENTRIFUGO_SSL_KEY', null), // Self-Signed SSL Key for Host (require verify=true)
         ],
 CONFIG;
 
@@ -185,15 +123,12 @@ CONFIG;
             "$1{$connection}\n\n",
             $contents,
             1,
-            $count
+            $count,
         );
 
         return $count === 1 && is_string($updated) ? $updated : $contents;
     }
 
-    /**
-     * Replace an existing env var or append it if missing.
-     */
     protected function upsertEnvironmentVariable(string $contents, string $key, string $value): string
     {
         $pattern = "/^{$key}=.*$/m";
@@ -208,38 +143,26 @@ CONFIG;
             : $contents.PHP_EOL.$replacement.PHP_EOL;
     }
 
-    /**
-     * Determine the options used when installing Laravel broadcasting scaffolding.
-     */
-    protected function broadcastingInstallOptions(): array
+    protected function printSummary(): void
     {
-        $options = [
-            '--no-interaction' => true,
-        ];
+        $env = app()->environmentFile();
+        $contents = File::exists($env) ? File::get($env) : '';
 
-        if ($this->hasBroadcastingInstallOption('without-node')) {
-            $options['--without-node'] = true;
+        $this->components->twoColumnDetail('Config file', 'config/centrifugo.php');
+
+        foreach (['CENTRIFUGO_URL', 'CENTRIFUGO_API_KEY', 'CENTRIFUGO_TOKEN_HMAC_SECRET_KEY', 'CENTRIFUGO_APP', 'BROADCAST_CONNECTION'] as $key) {
+            $this->components->twoColumnDetail($key, $this->readEnvironmentVariable($contents, $key) ?? '(not set)');
         }
-
-        if ($this->hasBroadcastingInstallOption('without-reverb')) {
-            $options['--without-reverb'] = true;
-        }
-
-        if ($this->hasBroadcastingInstallOption('reverb')) {
-            $options['--reverb'] = true;
-        }
-
-        return $options;
     }
 
-    /**
-     * Determine if the framework's install:broadcasting command supports an option.
-     */
-    protected function hasBroadcastingInstallOption(string $option): bool
+    protected function readEnvironmentVariable(string $contents, string $key): ?string
     {
-        return $this->getApplication()
-            ->find('install:broadcasting')
-            ->getDefinition()
-            ->hasOption($option);
+        if (preg_match("/^{$key}=(.*)$/m", $contents, $matches) !== 1) {
+            return null;
+        }
+
+        $value = trim($matches[1], "\"'");
+
+        return $value === '' ? null : $value;
     }
 }
