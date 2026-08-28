@@ -36,23 +36,30 @@ jobs:
     runs-on: ubuntu-22.04
 
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
           - php: '8.2'
             laravel: '11'
+            testbench: '9'
           - php: '8.3'
             laravel: '11'
+            testbench: '9'
           - php: '8.2'
             laravel: '12'
+            testbench: '10'
           - php: '8.3'
             laravel: '12'
+            testbench: '10'
           - php: '8.4'
             laravel: '12'
+            testbench: '10'
           - php: '8.3'
             laravel: '13'
+            testbench: '11'
           - php: '8.4'
             laravel: '13'
+            testbench: '11'
 
     name: PHP ${{ matrix.php }} - Laravel ${{ matrix.laravel }}
 
@@ -71,7 +78,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          composer require "illuminate/contracts=^${{ matrix.laravel }}" --no-update
+          composer require "laravel/framework:^${{ matrix.laravel }}.0" --no-update
+          composer require "orchestra/testbench:^${{ matrix.testbench }}.0" --dev --no-update
           composer update --prefer-dist --no-interaction --no-progress
 
       - name: Run tests
