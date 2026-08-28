@@ -78,6 +78,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          composer config policy.advisories.block false
           composer require "laravel/framework:^${{ matrix.laravel }}.0" --no-update
           composer require "orchestra/testbench:^${{ matrix.testbench }}.0" --dev --no-update
           composer update --prefer-dist --no-interaction --no-progress
