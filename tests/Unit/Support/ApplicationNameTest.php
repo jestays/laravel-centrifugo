@@ -31,6 +31,7 @@ final class ApplicationNameTest extends TestCase
             'null' => [null],
             'empty string' => [''],
             'uppercase and spaces' => ['Bad App!'],
+            'trailing newline' => ["pos\n"],
         ];
     }
 }

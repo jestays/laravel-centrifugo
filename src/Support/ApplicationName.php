@@ -8,7 +8,7 @@ use InvalidArgumentException;
 
 final class ApplicationName
 {
-    private const PATTERN = '/^[a-z0-9_-]+$/';
+    private const PATTERN = '/\A[a-z0-9_-]+\z/';
 
     public static function validate(?string $application): string
     {
