@@ -1,40 +1,35 @@
 <?php
 
-namespace denis660\Centrifugo\Test;
+declare(strict_types=1);
 
-use denis660\Centrifugo\{Centrifugo, CentrifugoServiceProvider};
+namespace Jestays\Centrifugo\Tests;
 
-/**
- * @internal
- *
- * @coversNothing
- */
-class TestCase extends \Orchestra\Testbench\TestCase
+use Jestays\Centrifugo\CentrifugoServiceProvider;
+use Jestays\Centrifugo\Facades\Centrifugo as CentrifugoFacade;
+use Orchestra\Testbench\TestCase as BaseTestCase;
+
+abstract class TestCase extends BaseTestCase
 {
-    protected Centrifugo $centrifuge;
-
-    public function setUp(): void
-    {
-        parent::setUp();
-        $this->centrifuge = $this->app->make('centrifugo');
-    }
-
     protected function getPackageProviders($app): array
     {
-        return [
-            CentrifugoServiceProvider::class,
-        ];
+        return [CentrifugoServiceProvider::class];
     }
 
-    protected function getEnvironmentSetUp($app)
+    protected function getPackageAliases($app): array
     {
+        return ['Centrifugo' => CentrifugoFacade::class];
+    }
+
+    protected function getEnvironmentSetUp($app): void
+    {
+        $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('a', 32)));
+
+        $app['config']->set('centrifugo.application', 'pos');
+        $app['config']->set('centrifugo.token_hmac_secret_key', 'secret');
+        $app['config']->set('centrifugo.api_key', 'api-key');
+        $app['config']->set('centrifugo.url', 'http://localhost:8000');
 
         $app['config']->set('broadcasting.default', 'centrifugo');
-        $app['config']->set('broadcasting.connections.centrifugo', [
-            'driver' => 'centrifugo',
-            'token_hmac_secret_key' => 'secret',
-            'api_key' => 'api-key',
-            'url' => 'http://localhost:8000',
-        ]);
+        $app['config']->set('broadcasting.connections.centrifugo', ['driver' => 'centrifugo']);
     }
 }

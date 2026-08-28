@@ -2,20 +2,19 @@
 
 declare(strict_types=1);
 
-namespace denis660\Centrifugo\Test\Unit;
+namespace Jestays\Centrifugo\Tests\Unit;
 
-use denis660\Centrifugo\Commands\InstallCommand;
-use denis660\Centrifugo\Test\Support\TemporaryLaravelAppTestCase;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
+use Jestays\Centrifugo\Commands\InstallCommand;
+use Jestays\Centrifugo\Tests\Support\TemporaryLaravelAppTestCase;
 use ReflectionMethod;
-use Symfony\Component\Console\Application as SymfonyApplication;
 
-class RecordingBroadcastingInstallCommand extends Command
+final class RecordingBroadcastingInstallCommand extends Command
 {
-    protected $signature = 'install:broadcasting {--without-node} {--without-reverb} {--reverb}';
+    protected $signature = 'install:broadcasting';
 
-    protected $description = 'Record broadcasting installation options';
+    protected $description = 'Record broadcasting installation';
 
     public function handle(): int
     {
@@ -45,40 +44,13 @@ PHP);
 
         file_put_contents($routesPath, "<?php\n");
 
-        $recordPath = base_path('bootstrap/cache/install-broadcasting-options.json');
-
-        if (! is_dir(dirname($recordPath))) {
-            mkdir(dirname($recordPath), 0777, true);
-        }
-
-        file_put_contents($recordPath, json_encode([
-            'without-node' => $this->option('without-node'),
-            'without-reverb' => $this->option('without-reverb'),
-            'reverb' => $this->option('reverb'),
-        ], JSON_THROW_ON_ERROR));
-
         return self::SUCCESS;
     }
 }
 
-class InstallCommandTest extends TemporaryLaravelAppTestCase
+final class InstallCommandTest extends TemporaryLaravelAppTestCase
 {
-    public function setUp(): void
-    {
-        parent::setUp();
-
-        $this->writeAppFile('config/app.php', <<<'PHP'
-<?php
-
-return [
-    'providers' => [
-        // App\Providers\BroadcastServiceProvider::class,
-    ],
-];
-PHP);
-    }
-
-    public function testHandleRunsFullInstallFlowAgainstRealFilesystem(): void
+    public function test_handle_runs_the_full_install_flow_against_a_real_filesystem(): void
     {
         $this->registerRecordingBroadcastingInstallCommand();
 
@@ -86,33 +58,38 @@ PHP);
         $this->deleteAppFile('routes/channels.php');
         $this->writeAppFile('.env', 'APP_NAME=Laravel');
 
-        $this->artisan('centrifuge:install')
+        $this->artisan('centrifugo:install')
             ->expectsConfirmation('Would you like to enable event broadcasting?', 'yes')
             ->assertExitCode(0);
 
         $env = $this->readAppFile('.env');
         $broadcasting = $this->readAppFile('config/broadcasting.php');
-        $appConfig = $this->readAppFile('config/app.php');
-        $options = json_decode($this->readAppFile('bootstrap/cache/install-broadcasting-options.json'), true, 512, JSON_THROW_ON_ERROR);
 
         $this->assertStringContainsString('CENTRIFUGO_TOKEN_HMAC_SECRET_KEY=', $env);
         $this->assertStringContainsString('CENTRIFUGO_API_KEY=', $env);
         $this->assertStringContainsString('CENTRIFUGO_URL="http://localhost:8000"', $env);
-        $this->assertStringContainsString('BROADCAST_DRIVER=centrifugo', $env);
+        $this->assertStringContainsString('CENTRIFUGO_APP=', $env);
         $this->assertStringContainsString('BROADCAST_CONNECTION=centrifugo', $env);
+        $this->assertStringNotContainsString('BROADCAST_DRIVER=', $env);
         $this->assertStringContainsString("'centrifugo' => [", $broadcasting);
         $this->assertStringContainsString("'driver' => 'centrifugo'", $broadcasting);
         $this->assertSame("<?php\n", $this->readAppFile('routes/channels.php'));
-        $this->assertStringNotContainsString('// App\Providers\BroadcastServiceProvider::class', $appConfig);
-        $this->assertStringContainsString('App\Providers\BroadcastServiceProvider::class', $appConfig);
-        $this->assertSame([
-            'without-node' => true,
-            'without-reverb' => true,
-            'reverb' => true,
-        ], $options);
+        $this->assertFileExists($this->appFilePath('config/centrifugo.php'));
     }
 
-    public function testHandleSkipsInstallerWhenUserDeclinesAndWarnsAboutMissingConfig(): void
+    public function test_handle_warns_about_an_empty_centrifugo_app_identifier(): void
+    {
+        $this->registerRecordingBroadcastingInstallCommand();
+
+        $this->writeAppFile('routes/channels.php', "<?php\n");
+        $this->writeAppFile('.env', 'APP_NAME=Laravel');
+
+        $this->artisan('centrifugo:install')
+            ->expectsOutputToContain('CENTRIFUGO_APP was added empty.')
+            ->assertExitCode(0);
+    }
+
+    public function test_handle_skips_installer_when_user_declines_and_warns_about_missing_config(): void
     {
         $this->registerRecordingBroadcastingInstallCommand();
 
@@ -120,7 +97,7 @@ PHP);
         $this->deleteAppFile('routes/channels.php');
         $this->writeAppFile('.env', "APP_NAME=Laravel\n");
 
-        $this->artisan('centrifuge:install')
+        $this->artisan('centrifugo:install')
             ->expectsConfirmation('Would you like to enable event broadcasting?', 'no')
             ->expectsOutputToContain('Skipping Centrifugo broadcasting configuration because config/broadcasting.php was not found.')
             ->assertExitCode(0);
@@ -129,12 +106,11 @@ PHP);
 
         $this->assertStringContainsString('CENTRIFUGO_TOKEN_HMAC_SECRET_KEY=', $env);
         $this->assertStringContainsString('BROADCAST_CONNECTION=centrifugo', $env);
-        $this->assertFileDoesNotExist($this->appFilePath('bootstrap/cache/install-broadcasting-options.json'));
         $this->assertFileDoesNotExist($this->appFilePath('routes/channels.php'));
         $this->assertFileDoesNotExist($this->appFilePath('config/broadcasting.php'));
     }
 
-    public function testAddEnvironmentVariablesReturnsEarlyForMissingFileAndExistingValues(): void
+    public function test_add_environment_variables_returns_early_for_missing_file_and_skips_existing_values(): void
     {
         $command = $this->installCommand();
 
@@ -146,9 +122,10 @@ PHP);
 
         $contents = implode("\n", [
             'APP_NAME=Laravel',
-            'CENTRIFUGO_TOKEN_HMAC_SECRET_KEY=secret',
-            'CENTRIFUGO_API_KEY=api-key',
             'CENTRIFUGO_URL="http://localhost:8000"',
+            'CENTRIFUGO_API_KEY=api-key',
+            'CENTRIFUGO_TOKEN_HMAC_SECRET_KEY=secret',
+            'CENTRIFUGO_APP=pos',
         ])."\n";
 
         $this->writeAppFile('.env', $contents);
@@ -158,26 +135,7 @@ PHP);
         $this->assertSame($contents, $this->readAppFile('.env'));
     }
 
-    public function testEnsureBroadcastingIsInstalledReturnsWhenScaffoldingExistsOrInstallerIsUnavailable(): void
-    {
-        $command = $this->installCommand();
-
-        $this->writeAppFile('routes/channels.php', "<?php\n");
-
-        $this->invokeProtected($command, 'ensureBroadcastingIsInstalled');
-
-        $this->assertSame("<?php\n", $this->readAppFile('routes/channels.php'));
-
-        $this->deleteAppFile('routes/channels.php');
-
-        $command->setApplication(new SymfonyApplication());
-
-        $this->invokeProtected($command, 'ensureBroadcastingIsInstalled');
-
-        $this->assertFileDoesNotExist($this->appFilePath('routes/channels.php'));
-    }
-
-    public function testUpdateBroadcastingConfigurationAndDriverHandleEarlyReturns(): void
+    public function test_update_broadcasting_configuration_skips_an_existing_connection(): void
     {
         $command = $this->installCommand();
         $existingConfig = <<<'PHP'
@@ -197,29 +155,25 @@ PHP;
         $this->invokeProtected($command, 'updateBroadcastingConfiguration');
 
         $this->assertSame($existingConfig, $this->readAppFile('config/broadcasting.php'));
-
-        $this->deleteAppFile('.env');
-
-        $this->invokeProtected($command, 'updateBroadcastingDriver');
-
-        $this->assertFileDoesNotExist($this->appFilePath('.env'));
     }
 
-    public function testEnableBroadcastServiceProviderReturnsEarlyWhenConfigIsMissing(): void
+    public function test_upsert_environment_variable_replaces_or_appends_the_value(): void
     {
         $command = $this->installCommand();
 
-        $this->deleteAppFile('config/app.php');
+        $this->assertSame(
+            "APP_NAME=Laravel\nBROADCAST_CONNECTION=centrifugo\n",
+            $this->invokeProtected($command, 'upsertEnvironmentVariable', "APP_NAME=Laravel\nBROADCAST_CONNECTION=log\n", 'BROADCAST_CONNECTION', 'centrifugo')
+        );
 
-        $this->invokeProtected($command, 'enableBroadcastServiceProvider');
-
-        $this->assertFileDoesNotExist($this->appFilePath('config/app.php'));
+        $this->assertSame(
+            "APP_NAME=Laravel\nBROADCAST_CONNECTION=centrifugo\n",
+            $this->invokeProtected($command, 'upsertEnvironmentVariable', "APP_NAME=Laravel\n", 'BROADCAST_CONNECTION', 'centrifugo')
+        );
     }
 
-    public function testProtectedHelpersUseRealCommandDefinitionAndTransformContents(): void
+    public function test_inject_centrifugo_connection_adds_the_connection_once(): void
     {
-        $this->registerRecordingBroadcastingInstallCommand();
-
         $command = $this->installCommand();
         $broadcastingConfig = <<<'PHP'
 <?php
@@ -232,45 +186,18 @@ return [
     ],
 ];
 PHP;
-        $existingConnection = <<<'PHP'
-<?php
 
-return [
-    'connections' => [
-        'centrifugo' => [
-            'driver' => 'centrifugo',
-        ],
-    ],
-];
-PHP;
+        $updated = $this->invokeProtected($command, 'injectCentrifugoConnection', $broadcastingConfig);
 
-        $this->assertTrue($this->invokeProtected($command, 'hasBroadcastingInstallOption', 'without-node'));
-        $this->assertSame([
-            '--no-interaction' => true,
-            '--without-node' => true,
-            '--without-reverb' => true,
-            '--reverb' => true,
-        ], $this->invokeProtected($command, 'broadcastingInstallOptions'));
-
-        $updatedConfig = $this->invokeProtected($command, 'injectCentrifugoConnection', $broadcastingConfig);
-
-        $this->assertStringContainsString("'centrifugo' => [", $updatedConfig);
-        $this->assertSame($existingConnection, $this->invokeProtected($command, 'injectCentrifugoConnection', $existingConnection));
-        $this->assertSame(
-            "APP_NAME=Laravel\nBROADCAST_DRIVER=centrifugo\n",
-            $this->invokeProtected($command, 'upsertEnvironmentVariable', "APP_NAME=Laravel\nBROADCAST_DRIVER=log\n", 'BROADCAST_DRIVER', 'centrifugo')
-        );
-        $this->assertSame(
-            "APP_NAME=Laravel\nBROADCAST_CONNECTION=centrifugo\n",
-            $this->invokeProtected($command, 'upsertEnvironmentVariable', "APP_NAME=Laravel\n", 'BROADCAST_CONNECTION', 'centrifugo')
-        );
+        $this->assertStringContainsString("'centrifugo' => [", $updated);
+        $this->assertSame($updated, $this->invokeProtected($command, 'injectCentrifugoConnection', $updated));
     }
 
     private function installCommand(): InstallCommand
     {
         $kernel = $this->app->make(ConsoleKernel::class);
         $commands = $kernel->all();
-        $command = $commands['centrifuge:install'];
+        $command = $commands['centrifugo:install'];
 
         $this->assertInstanceOf(InstallCommand::class, $command);
 
@@ -287,6 +214,6 @@ PHP;
 
     private function registerRecordingBroadcastingInstallCommand(): void
     {
-        $this->app->make(ConsoleKernel::class)->registerCommand(new RecordingBroadcastingInstallCommand());
+        $this->app->make(ConsoleKernel::class)->registerCommand(new RecordingBroadcastingInstallCommand);
     }
 }

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace denis660\Centrifugo\Test\Support;
+namespace Jestays\Centrifugo\Tests\Support;
 
-use denis660\Centrifugo\Test\TestCase as PackageTestCase;
 use FilesystemIterator;
+use Jestays\Centrifugo\Tests\TestCase as PackageTestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 
@@ -24,7 +24,7 @@ abstract class TemporaryLaravelAppTestCase extends PackageTestCase
         return self::$temporaryBasePath;
     }
 
-    public function setUp(): void
+    protected function setUp(): void
     {
         self::rebuildTemporaryBasePath();
 

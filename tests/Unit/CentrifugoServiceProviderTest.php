@@ -1,59 +1,65 @@
 <?php
+
 declare(strict_types=1);
 
-namespace denis660\Centrifugo\Test\Unit;
+namespace Jestays\Centrifugo\Tests\Unit;
 
-use denis660\Centrifugo\Centrifugo;
-use denis660\Centrifugo\CentrifugoBroadcaster;
-use denis660\Centrifugo\Contracts\CentrifugoInterface;
-use denis660\Centrifugo\CentrifugoServiceProvider;
-use denis660\Centrifugo\Test\TestCase;
 use Illuminate\Broadcasting\BroadcastManager;
+use InvalidArgumentException;
+use Jestays\Centrifugo\Broadcasting\CentrifugoBroadcaster;
+use Jestays\Centrifugo\Centrifugo;
+use Jestays\Centrifugo\Channels\ChannelMapper;
+use Jestays\Centrifugo\Facades\Centrifugo as CentrifugoFacade;
+use Jestays\Centrifugo\Identity\UserMapper;
+use Jestays\Centrifugo\Tests\TestCase;
+use Jestays\Centrifugo\Tokens\TokenManager;
+use phpcent\Client;
 
-class CentrifugoServiceProviderTest extends TestCase
+final class CentrifugoServiceProviderTest extends TestCase
 {
-    protected function getPackageProviders($app): array
+    public function test_centrifugo_service_is_bound_as_singleton_with_alias(): void
     {
-        return [CentrifugoServiceProvider::class];
-    }
-
-    public function testBinding()
-    {
-        $this->app['config']->set('broadcasting.connections.centrifugo', [
-            'driver' => 'centrifugo',
-            'token_hmac_secret_key' => 'test-secret',
-            'api_key' => 'test-api-key',
-        ]);
-
         $centrifugo = $this->app->make('centrifugo');
+
         $this->assertInstanceOf(Centrifugo::class, $centrifugo);
+        $this->assertSame($centrifugo, $this->app->make(Centrifugo::class));
     }
 
-    public function testContractBinding()
+    public function test_client_channel_mapper_user_mapper_and_token_manager_are_bound(): void
     {
-        $this->app['config']->set('broadcasting.connections.centrifugo', [
-            'driver' => 'centrifugo',
-            'token_hmac_secret_key' => 'test-secret',
-            'api_key' => 'test-api-key',
-        ]);
-
-        $centrifugo = $this->app->make('centrifugo');
-        $contract = $this->app->make(CentrifugoInterface::class);
-
-        $this->assertInstanceOf(Centrifugo::class, $contract);
-        $this->assertSame($centrifugo, $contract);
+        $this->assertInstanceOf(Client::class, $this->app->make(Client::class));
+        $this->assertInstanceOf(ChannelMapper::class, $this->app->make(ChannelMapper::class));
+        $this->assertInstanceOf(UserMapper::class, $this->app->make(UserMapper::class));
+        $this->assertInstanceOf(TokenManager::class, $this->app->make(TokenManager::class));
     }
 
-    public function testBroadcaster()
+    public function test_facade_resolves_to_the_centrifugo_service(): void
     {
-        $this->app['config']->set('broadcasting.connections.centrifugo', [
-            'driver' => 'centrifugo',
-            'token_hmac_secret_key' => 'test-secret',
-            'api_key' => 'test-api-key',
-        ]);
+        $this->assertInstanceOf(Centrifugo::class, CentrifugoFacade::getFacadeRoot());
+    }
 
-        $manager = $this->app->make(BroadcastManager::class);
-        $broadcaster = $manager->connection('centrifugo');
+    public function test_broadcaster_resolves_through_the_broadcast_manager(): void
+    {
+        $broadcaster = $this->app->make(BroadcastManager::class)->connection('centrifugo');
+
         $this->assertInstanceOf(CentrifugoBroadcaster::class, $broadcaster);
     }
-} 
+
+    public function test_configuration_defaults_are_merged(): void
+    {
+        $this->assertSame(3600, config('centrifugo.token_ttl'));
+        $this->assertSame(['public' => 'public', 'private' => 'private', 'presence' => 'presence'], config('centrifugo.namespaces'));
+        $this->assertTrue(config('centrifugo.routes.enabled'));
+    }
+
+    public function test_resolving_the_channel_mapper_without_an_application_configured_throws_a_clear_message(): void
+    {
+        $this->app['config']->set('centrifugo.application', null);
+        $this->app->forgetInstance(ChannelMapper::class);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/CENTRIFUGO_APP/');
+
+        $this->app->make(ChannelMapper::class);
+    }
+}
