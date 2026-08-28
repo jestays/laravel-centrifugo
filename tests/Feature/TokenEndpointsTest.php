@@ -76,6 +76,20 @@ final class TokenEndpointsTest extends TestCase
             ->assertUnauthorized();
     }
 
+    public function test_subscription_token_endpoint_fails_clearly_when_centrifugo_is_not_the_default_connection(): void
+    {
+        $this->app['config']->set('app.debug', true);
+        $this->app['config']->set('broadcasting.default', 'log');
+        $this->app['config']->set('broadcasting.connections.log', ['driver' => 'log']);
+
+        $response = $this->actingAs($this->user(1))->postJson('/centrifugo/subscription-token', [
+            'channel' => 'private:pos.orders.1',
+        ]);
+
+        $response->assertStatus(500);
+        $this->assertStringContainsString('BROADCAST_CONNECTION', (string) $response->json('message'));
+    }
+
     private function user(int $id): Authenticatable
     {
         return new class($id) implements Authenticatable

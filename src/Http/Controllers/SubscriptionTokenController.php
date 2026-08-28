@@ -7,6 +7,8 @@ namespace Jestays\Centrifugo\Http\Controllers;
 use Illuminate\Broadcasting\BroadcastManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Jestays\Centrifugo\Broadcasting\CentrifugoBroadcaster;
+use RuntimeException;
 
 final class SubscriptionTokenController
 {
@@ -18,8 +20,16 @@ final class SubscriptionTokenController
             'channel' => ['required', 'string'],
         ]);
 
-        return response()->json(
-            $this->broadcastManager->connection('centrifugo')->auth($request),
-        );
+        $broadcaster = $this->broadcastManager->connection();
+
+        if (! $broadcaster instanceof CentrifugoBroadcaster) {
+            throw new RuntimeException(
+                'The default broadcasting connection is not centrifugo. Broadcast::channel() callbacks are '.
+                'registered on the default connection, so set BROADCAST_CONNECTION=centrifugo for subscription '.
+                'authorization to work.',
+            );
+        }
+
+        return response()->json($broadcaster->auth($request));
     }
 }
