@@ -19,6 +19,18 @@ use phpcent\Client;
 
 final class CentrifugoServiceProvider extends ServiceProvider
 {
+    private const DEFAULT_NAMESPACES = [
+        'public' => 'public',
+        'private' => 'private',
+        'presence' => 'presence',
+    ];
+
+    private const DEFAULT_ROUTES = [
+        'enabled' => true,
+        'prefix' => 'centrifugo',
+        'middleware' => ['web', 'auth'],
+    ];
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/centrifugo.php', 'centrifugo');
@@ -40,7 +52,7 @@ final class CentrifugoServiceProvider extends ServiceProvider
 
             return new ScopedChannelMapper(
                 ApplicationName::validate($config->get('centrifugo.application')),
-                (array) $config->get('centrifugo.namespaces'),
+                array_replace(self::DEFAULT_NAMESPACES, (array) $config->get('centrifugo.namespaces', [])),
             );
         });
 
@@ -88,18 +100,26 @@ final class CentrifugoServiceProvider extends ServiceProvider
             );
         });
 
-        if ((bool) $this->app->make('config')->get('centrifugo.routes.enabled')) {
-            $this->registerRoutes();
+        $routes = $this->routesConfig();
+
+        if ($routes['enabled']) {
+            $this->registerRoutes($routes);
         }
     }
 
-    private function registerRoutes(): void
+    private function routesConfig(): array
     {
-        $config = $this->app->make('config');
+        return array_replace(
+            self::DEFAULT_ROUTES,
+            (array) $this->app->make('config')->get('centrifugo.routes', []),
+        );
+    }
 
+    private function registerRoutes(array $routes): void
+    {
         Route::group([
-            'prefix' => $config->get('centrifugo.routes.prefix'),
-            'middleware' => $config->get('centrifugo.routes.middleware'),
+            'prefix' => $routes['prefix'],
+            'middleware' => $routes['middleware'],
         ], function (): void {
             $this->loadRoutesFrom(__DIR__.'/../routes/centrifugo.php');
         });

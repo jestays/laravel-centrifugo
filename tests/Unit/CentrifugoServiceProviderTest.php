@@ -52,6 +52,18 @@ final class CentrifugoServiceProviderTest extends TestCase
         $this->assertTrue(config('centrifugo.routes.enabled'));
     }
 
+    public function test_partial_namespaces_config_does_not_wipe_the_remaining_defaults(): void
+    {
+        $this->app['config']->set('centrifugo.namespaces', ['private' => 'priv']);
+        $this->app->forgetInstance(ChannelMapper::class);
+
+        $mapper = $this->app->make(ChannelMapper::class);
+
+        $this->assertSame('priv:pos.orders.1', $mapper->toCentrifugo('private-orders.1'));
+        $this->assertSame('public:pos.stock', $mapper->toCentrifugo('stock'));
+        $this->assertSame('presence:pos.branch.10', $mapper->toCentrifugo('presence-branch.10'));
+    }
+
     public function test_resolving_the_channel_mapper_without_an_application_configured_throws_a_clear_message(): void
     {
         $this->app['config']->set('centrifugo.application', null);
