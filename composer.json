@@ -1,6 +1,6 @@
 {
-    "name": "denis660/laravel-centrifugo",
-    "description": "Centrifugo broadcaster for laravel",
+    "name": "jestays/laravel-centrifugo",
+    "description": "Laravel broadcasting driver for Centrifugo 6+ with multi-application channel and user scoping.",
     "keywords": [
         "laravel-broadcaster",
         "broadcaster",
@@ -15,50 +15,50 @@
     "license": "MIT",
     "authors": [
         {
-            "name": "Denis Zakharenko",
-            "email": "amx-serv@ya.ru",
-            "role": "Creator"
+            "name": "jestays",
+            "role": "Maintainer"
         }
     ],
-    "homepage": "https://github.com/denis660/laravel-centrifugo",
+    "homepage": "https://github.com/jestays/laravel-centrifugo",
     "support": {
-        "email": "amx-serv@ya.ru",
-        "issues": "https://github.com/denis660/laravel-centrifugo/issues",
-        "source": "https://github.com/denis660/laravel-centrifugo"
+        "issues": "https://github.com/jestays/laravel-centrifugo/issues",
+        "source": "https://github.com/jestays/laravel-centrifugo"
     },
     "require": {
-        "php": "^8.0",
+        "php": ">=8.2",
         "ext-json": "*",
-        "laravel/framework": "^9.0|^10.0|^11.0|^12.0|^13.0",
-        "guzzlehttp/guzzle": "~6.0|^7.0"
+        "laravel/framework": "^11.0|^12.0|^13.0",
+        "centrifugal/phpcent": "^6.0"
     },
     "require-dev": {
-        "orchestra/testbench": "^7.35|^8.14|^9.0|^10.0|^11.0",
-        "phpunit/phpunit": "^9.3|^10.5|^11.5.3|^12.5.12"
+        "orchestra/testbench": "^9.0|^10.0|^11.0",
+        "phpunit/phpunit": "^10.5|^11.5|^12.0",
+        "laravel/pint": "^1.13"
     },
     "autoload": {
         "psr-4": {
-            "denis660\\Centrifugo\\": "src/"
+            "Jestays\\Centrifugo\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "denis660\\Centrifugo\\Test\\": "tests/"
+            "Jestays\\Centrifugo\\Tests\\": "tests/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "denis660\\Centrifugo\\CentrifugoServiceProvider"
+                "Jestays\\Centrifugo\\CentrifugoServiceProvider"
             ]
         }
     },
     "config": {
         "sort-packages": true
     },
-    "minimum-stability": "dev",
     "prefer-stable": true,
     "scripts": {
-        "test": "phpunit"
+        "test": "phpunit",
+        "lint": "pint --test",
+        "lint:fix": "pint"
     }
 }
