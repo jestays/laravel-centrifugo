@@ -71,6 +71,55 @@ final class ScopedChannelMapperTest extends TestCase
         $this->mapper->toLaravel('private:pos.');
     }
 
+    public function test_rejects_a_prefix_trick_where_the_application_segment_only_starts_with_the_real_application(): void
+    {
+        $this->expectException(InvalidCentrifugoChannel::class);
+
+        $this->mapper->toLaravel('private:pos2.user.123');
+    }
+
+    public function test_rejects_a_prefix_trick_where_the_application_segment_is_prefixed_by_the_real_application(): void
+    {
+        $this->expectException(InvalidCentrifugoChannel::class);
+
+        $this->mapper->toLaravel('private:posx.user.123');
+    }
+
+    public function test_rejects_a_channel_name_containing_an_extra_colon(): void
+    {
+        $this->expectException(InvalidCentrifugoChannel::class);
+
+        $this->mapper->toLaravel('private:pos.a:b');
+    }
+
+    public function test_rejects_a_channel_name_with_trailing_whitespace(): void
+    {
+        $this->expectException(InvalidCentrifugoChannel::class);
+
+        $this->mapper->toLaravel('private:pos.orders.1 ');
+    }
+
+    public function test_rejects_a_channel_name_containing_a_hash(): void
+    {
+        $this->expectException(InvalidCentrifugoChannel::class);
+
+        $this->mapper->toLaravel('private:pos.orders#1');
+    }
+
+    public function test_rejects_a_double_wrap_attempt_where_a_pre_mapped_channel_is_passed_to_to_centrifugo(): void
+    {
+        $this->expectException(InvalidCentrifugoChannel::class);
+
+        $this->mapper->toCentrifugo('private-pos:extra');
+    }
+
+    public function test_rejects_an_empty_laravel_channel_name(): void
+    {
+        $this->expectException(InvalidCentrifugoChannel::class);
+
+        $this->mapper->toCentrifugo('private-');
+    }
+
     public function test_honours_custom_namespaces(): void
     {
         $mapper = new ScopedChannelMapper('pos', [

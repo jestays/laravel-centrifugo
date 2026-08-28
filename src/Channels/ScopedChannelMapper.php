@@ -8,6 +8,8 @@ use Jestays\Centrifugo\Exceptions\InvalidCentrifugoChannel;
 
 final class ScopedChannelMapper implements ChannelMapper
 {
+    private const SEGMENT_PATTERN = '/\A[A-Za-z0-9@,;._=\-]+\z/';
+
     public function __construct(
         private readonly string $application,
         private readonly array $namespaces,
@@ -16,14 +18,18 @@ final class ScopedChannelMapper implements ChannelMapper
     public function toCentrifugo(string $channel): string
     {
         if (str_starts_with($channel, 'private-')) {
-            return $this->format($this->namespaces['private'], substr($channel, strlen('private-')));
+            $rest = substr($channel, strlen('private-'));
+
+            return $this->format($this->namespaces['private'], $this->validateSegment($rest, $channel));
         }
 
         if (str_starts_with($channel, 'presence-')) {
-            return $this->format($this->namespaces['presence'], substr($channel, strlen('presence-')));
+            $rest = substr($channel, strlen('presence-'));
+
+            return $this->format($this->namespaces['presence'], $this->validateSegment($rest, $channel));
         }
 
-        return $this->format($this->namespaces['public'], $channel);
+        return $this->format($this->namespaces['public'], $this->validateSegment($channel, $channel));
     }
 
     public function toLaravel(string $channel): string
@@ -64,10 +70,15 @@ final class ScopedChannelMapper implements ChannelMapper
 
         $rest = substr($remainder, strlen($prefix));
 
-        if ($rest === '') {
-            throw new InvalidCentrifugoChannel("Centrifugo channel [{$channel}] has an empty channel name.");
+        return [$namespace, $this->validateSegment($rest, $channel)];
+    }
+
+    private function validateSegment(string $segment, string $original): string
+    {
+        if ($segment === '' || preg_match(self::SEGMENT_PATTERN, $segment) !== 1) {
+            throw new InvalidCentrifugoChannel("Centrifugo channel [{$original}] has an invalid channel name [{$segment}].");
         }
 
-        return [$namespace, $rest];
+        return $segment;
     }
 }
