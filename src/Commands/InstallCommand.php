@@ -32,7 +32,7 @@ final class InstallCommand extends Command
 
     protected function addEnvironmentVariables(): void
     {
-        if (File::missing($env = app()->environmentFile())) {
+        if (File::missing($env = $this->laravel->environmentFilePath())) {
             return;
         }
 
@@ -61,21 +61,79 @@ final class InstallCommand extends Command
 
     protected function ensureBroadcastingIsInstalled(): void
     {
+        $this->publishBroadcastingConfiguration();
+        $this->ensureChannelRoutesFileExists();
+        $this->ensureBroadcastingIsWired();
+    }
+
+    protected function publishBroadcastingConfiguration(): void
+    {
         $broadcastingConfig = app()->configPath('broadcasting.php');
 
-        if (File::exists($broadcastingConfig) && File::exists(base_path('routes/channels.php'))) {
+        if (File::exists($broadcastingConfig)) {
             return;
         }
 
-        if (! $this->getApplication()->has('install:broadcasting')) {
+        if (! $this->getApplication()->has('config:publish')) {
+            $this->components->warn('Skipping config:publish because it is not available. Publish config/broadcasting.php manually.');
+
             return;
         }
 
-        if (! $this->confirm('Would you like to enable event broadcasting?', true)) {
+        $this->call('config:publish', ['name' => 'broadcasting']);
+    }
+
+    protected function ensureChannelRoutesFileExists(): void
+    {
+        $channelsPath = base_path('routes/channels.php');
+
+        if (File::exists($channelsPath)) {
             return;
         }
 
-        $this->call('install:broadcasting', ['--no-interaction' => true]);
+        if (! is_dir(dirname($channelsPath))) {
+            File::makeDirectory(dirname($channelsPath), 0755, true);
+        }
+
+        File::put($channelsPath, <<<'PHP'
+        <?php
+
+        use Illuminate\Support\Facades\Broadcast;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Broadcast Channels
+        |--------------------------------------------------------------------------
+        |
+        | Here you may register all of the event broadcasting channels that your
+        | application supports. The given channel authorization callbacks are
+        | used to check if an authenticated user can listen to the channel.
+        |
+        */
+
+        PHP);
+    }
+
+    protected function ensureBroadcastingIsWired(): void
+    {
+        $bootstrapApp = base_path('bootstrap/app.php');
+
+        if (File::missing($bootstrapApp)) {
+            return;
+        }
+
+        $contents = File::get($bootstrapApp);
+
+        if (Str::contains($contents, ['withBroadcasting', "'channels'", 'channels:'])) {
+            return;
+        }
+
+        $this->components->warn('Broadcasting channel routes are not wired into bootstrap/app.php yet.');
+        $this->components->info(
+            "Add ->withBroadcasting(__DIR__.'/../routes/channels.php') to bootstrap/app.php ".
+            "(or a 'channels' => __DIR__.'/../routes/channels.php' entry inside withRouting), ".
+            'so routes/channels.php is loaded.',
+        );
     }
 
     protected function updateBroadcastingConfiguration(): void
@@ -98,7 +156,7 @@ final class InstallCommand extends Command
 
     protected function updateBroadcastConnection(): void
     {
-        if (File::missing($env = app()->environmentFile())) {
+        if (File::missing($env = $this->laravel->environmentFilePath())) {
             return;
         }
 
@@ -145,7 +203,7 @@ CONFIG;
 
     protected function printSummary(): void
     {
-        $env = app()->environmentFile();
+        $env = $this->laravel->environmentFilePath();
         $contents = File::exists($env) ? File::get($env) : '';
 
         $this->components->twoColumnDetail('Config file', 'config/centrifugo.php');

@@ -4,63 +4,20 @@ declare(strict_types=1);
 
 namespace Jestays\Centrifugo\Tests\Unit;
 
-use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Jestays\Centrifugo\Commands\InstallCommand;
 use Jestays\Centrifugo\Tests\Support\TemporaryLaravelAppTestCase;
 use ReflectionMethod;
 
-final class RecordingBroadcastingInstallCommand extends Command
-{
-    protected $signature = 'install:broadcasting';
-
-    protected $description = 'Record broadcasting installation';
-
-    public function handle(): int
-    {
-        $configPath = app()->configPath('broadcasting.php');
-
-        if (! is_dir(dirname($configPath))) {
-            mkdir(dirname($configPath), 0777, true);
-        }
-
-        file_put_contents($configPath, <<<'PHP'
-<?php
-
-return [
-    'connections' => [
-        'log' => [
-            'driver' => 'log',
-        ],
-    ],
-];
-PHP);
-
-        $routesPath = base_path('routes/channels.php');
-
-        if (! is_dir(dirname($routesPath))) {
-            mkdir(dirname($routesPath), 0777, true);
-        }
-
-        file_put_contents($routesPath, "<?php\n");
-
-        return self::SUCCESS;
-    }
-}
-
 final class InstallCommandTest extends TemporaryLaravelAppTestCase
 {
     public function test_handle_runs_the_full_install_flow_against_a_real_filesystem(): void
     {
-        $this->registerRecordingBroadcastingInstallCommand();
-
         $this->deleteAppFile('config/broadcasting.php');
         $this->deleteAppFile('routes/channels.php');
         $this->writeAppFile('.env', 'APP_NAME=Laravel');
 
-        $this->artisan('centrifugo:install')
-            ->expectsConfirmation('Would you like to enable event broadcasting?', 'yes')
-            ->assertExitCode(0);
+        $this->artisan('centrifugo:install')->assertExitCode(0);
 
         $env = $this->readAppFile('.env');
         $broadcasting = $this->readAppFile('config/broadcasting.php');
@@ -73,41 +30,96 @@ final class InstallCommandTest extends TemporaryLaravelAppTestCase
         $this->assertStringNotContainsString('BROADCAST_DRIVER=', $env);
         $this->assertStringContainsString("'centrifugo' => [", $broadcasting);
         $this->assertStringContainsString("'driver' => 'centrifugo'", $broadcasting);
-        $this->assertSame("<?php\n", $this->readAppFile('routes/channels.php'));
         $this->assertFileExists($this->appFilePath('config/centrifugo.php'));
+    }
+
+    public function test_handle_publishes_broadcasting_config_only_when_missing(): void
+    {
+        $existingConfig = <<<'PHP'
+<?php
+
+return [
+    'connections' => [
+        'log' => [
+            'driver' => 'log',
+        ],
+    ],
+];
+PHP;
+
+        $this->writeAppFile('config/broadcasting.php', $existingConfig);
+        $this->writeAppFile('.env', 'APP_NAME=Laravel');
+
+        $this->artisan('centrifugo:install')->assertExitCode(0);
+
+        $broadcasting = $this->readAppFile('config/broadcasting.php');
+
+        $this->assertStringContainsString("'log' => [", $broadcasting);
+        $this->assertStringContainsString("'centrifugo' => [", $broadcasting);
+    }
+
+    public function test_handle_creates_channels_route_file_when_missing(): void
+    {
+        $this->deleteAppFile('routes/channels.php');
+        $this->writeAppFile('.env', 'APP_NAME=Laravel');
+
+        $this->artisan('centrifugo:install')->assertExitCode(0);
+
+        $channels = $this->readAppFile('routes/channels.php');
+
+        $this->assertStringContainsString('<?php', $channels);
+        $this->assertStringContainsString('use Illuminate\Support\Facades\Broadcast;', $channels);
+    }
+
+    public function test_handle_does_not_overwrite_an_existing_channels_route_file(): void
+    {
+        $this->writeAppFile('routes/channels.php', "<?php\n\n// existing channels\n");
+        $this->writeAppFile('.env', 'APP_NAME=Laravel');
+
+        $this->artisan('centrifugo:install')->assertExitCode(0);
+
+        $this->assertSame("<?php\n\n// existing channels\n", $this->readAppFile('routes/channels.php'));
+    }
+
+    public function test_handle_prints_instructions_when_broadcasting_is_not_wired_into_bootstrap(): void
+    {
+        $this->writeAppFile('.env', 'APP_NAME=Laravel');
+
+        $this->artisan('centrifugo:install')
+            ->expectsOutputToContain('Broadcasting channel routes are not wired into bootstrap/app.php yet.')
+            ->expectsOutputToContain('withBroadcasting')
+            ->assertExitCode(0);
+    }
+
+    public function test_handle_does_not_print_instructions_when_broadcasting_is_already_wired(): void
+    {
+        $this->writeAppFile('bootstrap/app.php', "<?php\n\nreturn Illuminate\\Foundation\\Application::configure()->withBroadcasting(__DIR__.'/../routes/channels.php')->create();\n");
+        $this->writeAppFile('.env', 'APP_NAME=Laravel');
+
+        $this->artisan('centrifugo:install')
+            ->doesntExpectOutputToContain('Broadcasting channel routes are not wired into bootstrap/app.php yet.')
+            ->assertExitCode(0);
+    }
+
+    public function test_handle_never_touches_node_or_package_json(): void
+    {
+        $this->deleteAppFile('config/broadcasting.php');
+        $this->deleteAppFile('routes/channels.php');
+        $this->writeAppFile('.env', 'APP_NAME=Laravel');
+
+        $this->artisan('centrifugo:install')->assertExitCode(0);
+
+        $this->assertFileDoesNotExist($this->appFilePath('package.json'));
+        $this->assertFileDoesNotExist($this->appFilePath('node_modules'));
     }
 
     public function test_handle_warns_about_an_empty_centrifugo_app_identifier(): void
     {
-        $this->registerRecordingBroadcastingInstallCommand();
-
-        $this->writeAppFile('routes/channels.php', "<?php\n");
         $this->writeAppFile('.env', 'APP_NAME=Laravel');
 
         $this->artisan('centrifugo:install')
             ->expectsOutputToContain('CENTRIFUGO_APP was added empty.')
             ->assertExitCode(0);
-    }
-
-    public function test_handle_skips_installer_when_user_declines_and_warns_about_missing_config(): void
-    {
-        $this->registerRecordingBroadcastingInstallCommand();
-
-        $this->deleteAppFile('config/broadcasting.php');
-        $this->deleteAppFile('routes/channels.php');
-        $this->writeAppFile('.env', "APP_NAME=Laravel\n");
-
-        $this->artisan('centrifugo:install')
-            ->expectsConfirmation('Would you like to enable event broadcasting?', 'no')
-            ->expectsOutputToContain('Skipping Centrifugo broadcasting configuration because config/broadcasting.php was not found.')
-            ->assertExitCode(0);
-
-        $env = $this->readAppFile('.env');
-
-        $this->assertStringContainsString('CENTRIFUGO_TOKEN_HMAC_SECRET_KEY=', $env);
-        $this->assertStringContainsString('BROADCAST_CONNECTION=centrifugo', $env);
-        $this->assertFileDoesNotExist($this->appFilePath('routes/channels.php'));
-        $this->assertFileDoesNotExist($this->appFilePath('config/broadcasting.php'));
     }
 
     public function test_add_environment_variables_returns_early_for_missing_file_and_skips_existing_values(): void
@@ -210,10 +222,5 @@ PHP;
         $reflection->setAccessible(true);
 
         return $reflection->invoke($command, ...$arguments);
-    }
-
-    private function registerRecordingBroadcastingInstallCommand(): void
-    {
-        $this->app->make(ConsoleKernel::class)->registerCommand(new RecordingBroadcastingInstallCommand);
     }
 }
