@@ -1,328 +1,208 @@
-<p align="center">Documentation <b>EN</b> | <a href="https://github.com/denis660/laravel-centrifugo/blob/master/README_RU.md">RU</a></p>
+# Laravel Centrifugo
 
-<h1 align="center">Laravel + Centrifugo</h1>
-<h2 align="center">Centrifugo broadcast driver for Laravel 9 - 13</h2>
+A Laravel broadcasting driver for [Centrifugo](https://centrifugal.dev/) 6+, built on top of the official
+[`centrifugal/phpcent`](https://github.com/centrifugal/phpcent) client.
 
-<p align="center">
-<a href="https://github.com/denis660/laravel-centrifugo/actions/workflows/tests.yml"><img src="https://github.com/denis660/laravel-centrifugo/actions/workflows/tests.yml/badge.svg" alt="Build Status"></a>
-<a href="https://github.com/denis660/laravel-centrifugo/releases"><img src="https://img.shields.io/github/release/denis660/laravel-centrifugo.svg?style=flat-square" alt="Latest Version"></a>
-<a href="https://packagist.org/packages/denis660/laravel-centrifugo"><img src="https://img.shields.io/packagist/dt/denis660/laravel-centrifugo.svg?style=flat-square" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/denis660/laravel-centrifugo"><img src="https://img.shields.io/packagist/php-v/denis660/laravel-centrifugo" alt="PHP Version"></a>
-<a href="https://packagist.org/packages/denis660/laravel-centrifugo"><img src="https://img.shields.io/packagist/v/denis660/laravel-centrifugo" alt="Laravel Version"></a>
-<a href="https://github.com/denis660/laravel-centrifugo/blob/master/build/logs/clover.xml"><img src="https://img.shields.io/badge/coverage-100%25-brightgreen?style=flat-square" alt="Coverage"></a>
-<a href="https://github.com/denis660/laravel-centrifugo/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="Software License"></a>
-</p>
+This package is designed for a single Centrifugo server shared by several Laravel applications. It scopes
+channels and user identities per application, so different applications can safely share the same Centrifugo
+instance without colliding.
 
-## Introduction
-Centrifugo broadcaster for Laravel is based on:
-- [centrifugal/phpcent](https://github.com/centrifugal/phpcent)
+## Architecture
 
-## Features
-- Compatible with Centrifugo v6, verified up to [v6.7.0](https://github.com/centrifugal/centrifugo/releases/tag/v6.7.0) 🚀
-- Wrapper for [Centrifugo HTTP API](https://centrifugal.dev/docs/server/server_api) 🔌
-- JWT token authentication (HMAC algorithm) for anonymous, authorized users, and private channels 🗝️
+```text
+Laravel
+    |
+jestays/laravel-centrifugo
+    |
+centrifugal/phpcent
+    |
+Centrifugo
+```
 
-## Requirements
-- PHP 8.0 - 8.4
-- Laravel 9 - 13
-- Guzzlehttp/Guzzle 6 - 7
-- Centrifugo Server v6 or newer (see [here](https://github.com/centrifugal/centrifugo))
+Laravel remains responsible for authentication, subscription authorization, and publishing. Transports
+(WebSocket, SSE, HTTP streaming) are entirely Centrifugo's responsibility; this package does not implement
+any transport and does not depend on Laravel Echo.
 
 ## Installation
-##### Select the version you need
-
-| Version  |   PHP    |     Laravel     | Centrifugo |       Notes       |
-|:-------:|:--------:|:---------------:|:----------:|:--------------------|
-| `5.*` | `>= 8.0` |   `9` - `13`    |     `5-6`      | **Current version** |
-| `3.0.*` | `>= 7.4` | `8.75.*` - `10` |    `4`-`5` | Previous version    |
-
-Install the package:
 
 ```bash
-composer require denis660/laravel-centrifugo
+composer require jestays/laravel-centrifugo
+php artisan centrifugo:install
 ```
 
-Then run the installer:
-
-```bash
-php artisan centrifuge:install
-```
-
-The installer will:
-- add the `centrifugo` connection to `config/broadcasting.php`
-- add the required `CENTRIFUGO_*` variables to `.env`
-- set both `BROADCAST_DRIVER=centrifugo` and `BROADCAST_CONNECTION=centrifugo`
-- offer to run `php artisan install:broadcasting` for you if broadcasting scaffolding is missing
-
-In fresh Laravel 11-13 applications, broadcasting is disabled by default, so letting the installer enable it for you is usually the simplest path.
+The installer publishes `config/centrifugo.php`, adds the required environment variables to `.env`, registers
+the `centrifugo` broadcasting connection, and sets `BROADCAST_CONNECTION=centrifugo`.
 
 ## Configuration
-After `centrifuge:install` finishes, replace the generated values in `.env` with the real credentials from your Centrifugo server.
 
-# Credentials
-To establish a connection with Centrifugo, you need to provide credentials from your Centrifugo server configuration. The installer generates placeholder values locally, but you should replace them with the actual values from your server.
-
-Required parameters:
-```
-CENTRIFUGO_TOKEN_HMAC_SECRET_KEY=token_hmac_secret_key-from-centrifugo-config
-CENTRIFUGO_API_KEY=api_key-from-centrifugo-config
-```
-
-Optional parameters, modify if needed:
-```
-CENTRIFUGO_URL=http://localhost:8000
-CENTRIFUGO_SSL_KEY=/etc/ssl/some.pem
-CENTRIFUGO_VERIFY=false
-```
-
-The installer configures both broadcasting environment variables in `.env`:
-
-```
-BROADCAST_DRIVER=centrifugo
+```env
 BROADCAST_CONNECTION=centrifugo
+
+CENTRIFUGO_URL=http://localhost:8000
+CENTRIFUGO_API_KEY=
+CENTRIFUGO_TOKEN_HMAC_SECRET_KEY=
+CENTRIFUGO_APP=pos
 ```
 
-## Client SDKs
-For working with clients, see the [Client SDK API](https://centrifugal.dev/docs/transports/client_api)
+`CENTRIFUGO_APP` identifies the current application on the shared Centrifugo server. It is required and must
+match `[a-z0-9_-]+`. The package fails with a clear error as soon as a channel or user mapper is resolved
+without a valid `CENTRIFUGO_APP`.
 
-Here is a list of SDKs supported by Centrifugal Labs:
-- [JavaScript](https://github.com/centrifugal/centrifuge-js) — for browser, NodeJS, and React Native
-- [Golang](https://github.com/centrifugal/centrifuge-go) — for Go language
-- [Dart](https://github.com/centrifugal/centrifuge-dart) — for Dart and Flutter (mobile and web applications)
-- [Swift](https://github.com/centrifugal/centrifuge-swift) — for native iOS development
-- [Java](https://github.com/centrifugal/centrifuge-java) — for native Android and general Java development
-- [Python](https://github.com/centrifugal/centrifuge-python) — real-time SDK for Python on top of asyncio
+## Broadcasting example
 
-## Basic Usage
-Set up your Centrifugo server as detailed in the [official documentation](https://centrifugal.dev)
-For sending events, refer to the [official Laravel documentation](https://laravel.com/docs/13.x/broadcasting)
-
-## Broadcast Driver Example
-The package can be used as a Laravel broadcasting driver, not only as a direct HTTP API wrapper.
-
-### 1. Create a broadcast event
+Business code keeps using the standard Laravel broadcasting primitives:
 
 ```php
-<?php
-
-namespace App\Events;
-
-use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
-use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
-
-class OrderShipmentStatusUpdated implements ShouldBroadcast
+final class OrderUpdated implements ShouldBroadcast
 {
-    use Dispatchable;
-    use SerializesModels;
-
-    public function __construct(
-        public int $orderId,
-        public string $status,
-    ) {
+    public function __construct(private readonly Order $order)
+    {
     }
 
     public function broadcastOn(): array
     {
-        return [new PrivateChannel("orders.{$this->orderId}")];
-    }
-
-    public function broadcastAs(): string
-    {
-        return 'shipment.status.updated';
-    }
-
-    public function broadcastWith(): array
-    {
         return [
-            'order_id' => $this->orderId,
-            'status' => $this->status,
+            new PrivateChannel("orders.{$this->order->id}"),
         ];
     }
 }
 ```
 
-### 2. Authorize the private channel
+With `CENTRIFUGO_APP=pos`, this event is published to Centrifugo as:
 
-```php
-<?php
-
-use Illuminate\Support\Facades\Broadcast;
-
-Broadcast::channel('orders.{orderId}', function ($user, int $orderId) {
-    return (int) $user->id === (int) $orderId; // Replace with your own access rule.
-});
+```text
+private:pos.orders.123
 ```
 
-### 3. Dispatch the event
+The event never needs to know about Centrifugo namespaces or application scoping.
 
-```php
-OrderShipmentStatusUpdated::dispatch($order->id, 'packed');
+## Channel naming
+
+Every Centrifugo channel follows the same structure:
+
+```text
+<namespace>:<application>.<channel>
 ```
 
-### 4. Expose an endpoint that returns a Centrifugo connection token
+| Laravel channel                | Centrifugo channel            |
+|---------------------------------|--------------------------------|
+| `new Channel('stock.updated')`  | `public:pos.stock.updated`     |
+| `new PrivateChannel('user.123')`| `private:pos.user.123`         |
+| `new PresenceChannel('branch.10')`| `presence:pos.branch.10`     |
 
-```php
-<?php
+Namespace names (`public`, `private`, `presence`) are configurable in `config/centrifugo.php`, but there is a
+single, modern naming strategy: legacy `$channel` naming is not supported.
 
-use denis660\Centrifugo\Centrifugo;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
+## Multi-application scoping
 
-Route::middleware('auth')->get('/centrifugo/connection-token', function (Request $request, Centrifugo $centrifugo) {
-    return [
-        'token' => $centrifugo->generateConnectionToken(
-            (string) $request->user()->getAuthIdentifier(),
-            300,
-        ),
-    ];
-});
+The same Centrifugo server can serve multiple Laravel applications, each with its own `CENTRIFUGO_APP`:
+
+```text
+private:pos.orders.123
+private:proplus.orders.123
+private:qms.orders.123
 ```
 
-### 5. Connect and subscribe from the client
+An application can never request a subscription token for a channel that belongs to another application.
+`ScopedChannelMapper` rejects any channel whose application segment does not match the current
+`CENTRIFUGO_APP`.
+
+## User identity
+
+Authenticated Laravel users are mapped to Centrifugo user identifiers scoped by application, so the same
+Laravel user ID never collides across applications:
+
+```text
+POS user 123    -> pos:123
+Pro+ user 123   -> proplus:123
+```
+
+## Centrifugo server namespace configuration
+
+Configure matching namespaces on the Centrifugo server side, for example:
+
+```json
+{
+    "namespaces": [
+        {
+            "name": "public",
+            "allow_subscribe_for_client": true
+        },
+        {
+            "name": "private"
+        },
+        {
+            "name": "presence",
+            "presence": true
+        }
+    ]
+}
+```
+
+## Token endpoints
+
+The package optionally registers two routes (enabled by default, see `config/centrifugo.php`):
+
+| Method | Route                              | Purpose                              |
+|--------|-------------------------------------|---------------------------------------|
+| POST   | `/centrifugo/connection-token`      | Issues a Centrifugo connection token  |
+| POST   | `/centrifugo/subscription-token`    | Issues a Centrifugo subscription token|
+
+The subscription token endpoint expects a `channel` field containing the Centrifugo channel name (e.g.
+`private:pos.orders.123`). It maps the channel back to its Laravel name (`orders.123`) and runs it through
+your normal `Broadcast::channel()` authorization callbacks before issuing a token.
+
+Route middleware (`web`, `auth` by default) is fully configurable and not tied to any specific guard, so you
+can use `auth:sanctum` or any other guard your application needs.
+
+## Frontend usage
+
+Clients connect directly to Centrifugo using the official [`centrifuge-js`](https://github.com/centrifugal/centrifuge-js)
+SDK, using the two token endpoints above as `getToken` callbacks:
 
 ```js
 import { Centrifuge } from 'centrifuge';
 
-const csrfToken = document
-  .querySelector('meta[name="csrf-token"]')
-  .getAttribute('content');
-
-const centrifuge = new Centrifuge('ws://127.0.0.1:8000/connection/websocket', {
-  getToken: async () => {
-    const response = await fetch('/centrifugo/connection-token', {
-      headers: {
-        'Accept': 'application/json',
-      },
-      credentials: 'same-origin',
-    });
-
-    const data = await response.json();
-
-    return data.token;
-  },
+const centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
+    getToken: async () => {
+        const response = await fetch('/centrifugo/connection-token', { method: 'POST' });
+        const { token } = await response.json();
+        return token;
+    },
 });
 
-let clientId = '';
-let subscribed = false;
-const orderId = 123;
-
-centrifuge.on('connected', (ctx) => {
-  clientId = ctx.client;
-
-  if (!subscribed) {
-    subscription.subscribe();
-    subscribed = true;
-  }
-});
-
-const subscription = centrifuge.newSubscription(`$orders.${orderId}`, {
-  getToken: async (ctx) => {
-    const response = await fetch('/broadcasting/auth', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-TOKEN': csrfToken,
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        client: clientId,
-        channels: [ctx.channel],
-      }),
-      credentials: 'same-origin',
-    });
-
-    const data = await response.json();
-
-    return data.channels[0].token;
-  },
-});
-
-subscription.on('publication', (ctx) => {
-  console.log(ctx.data.event, ctx.data);
+const subscription = centrifuge.newSubscription('private:pos.orders.123', {
+    getToken: async () => {
+        const response = await fetch('/centrifugo/subscription-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channel: 'private:pos.orders.123' }),
+        });
+        const { token } = await response.json();
+        return token;
+    },
 });
 
 centrifuge.connect();
+subscription.subscribe();
 ```
 
-When Laravel broadcasts to `new PrivateChannel('orders.123')`, Laravel names the channel `private-orders.123`. This driver automatically converts that name to `$orders.123` for Centrifugo, so clients should subscribe to the `$...` channel name.
+## Transports
 
-## Direct API Usage
-Here is a simple example of client usage:
+This package does not implement WebSocket, SSE, or HTTP streaming. Those transports are Centrifugo's
+responsibility; clients can use any official Centrifugo SDK to connect over the transport of their choice.
 
-```php
-<?php
-declare(strict_types = 1);
+## Legacy channels
 
-namespace App\Http\Controllers;
+This package does not support legacy `$` private channels.
 
-use denis660\Centrifugo\Centrifugo;
-use Illuminate\Support\Facades\Auth;
+## Credits
 
-class ExampleController
-{
-    public function example(Centrifugo $centrifugo)
-    {
-        // Send a message to the news channel
-        $centrifugo->publish('news', ['message' => 'Hello world']);
-
-        // Generate a connection token
-        $token = $centrifugo->generateConnectionToken((string)Auth::id(), 0, [
-            'name' => Auth::user()->name,
-        ]);
-
-        // Generate a token for a private channel connection with a 5 minute TTL
-        $privateToken = $centrifugo->generatePrivateChannelToken((string)Auth::id(), 'channel', 5 * 60, [
-            'name' => Auth::user()->name,
-        ]);
-
-        // Get a list of active channels
-        $centrifugo->channels();
-
-        // Get information about the news channel and its active clients
-        $centrifugo->presence('news');
-    }
-}
-```
-
-### Methods for generating client tokens
-| Method | Description |
-|------|-------------|
-| ```generateConnectionToken```  | Generate a token for connection |
-| ```generatePrivateChannelToken``` | Generate a private token for a private channel |
-
-The `exp` argument is a TTL in seconds. For a token valid for 5 minutes, pass `300`, not `time() + 300`.
-
-### API Methods
-
-| Method | Description                                                                                            |
-|------|-----------------------------------------------------------------------------------------------------|
-| ```publish``` | Send a message to a channel                                                                         |
-| ```broadcast``` | Send a message to multiple channels.                                                            |
-| ```presence``` | Get presence information for a channel (all clients currently subscribed to this channel). |
-| ```presenceStats``` | Get summary information for a channel (number of clients).                                        |
-| ```history``` | Get channel history (list of recent messages sent to the channel).           |
-| ```historyRemove``` | Remove channel history.                                                          |
-| ```subscribe``` | Subscribe a user to a channel                                                         |
-| ```unsubscribe``` | Unsubscribe a user from a channel.                                                         |
-| ```disconnect``` | Disconnect a user by their ID.                                                                   |
-| ```channels``` | List current active channels.                                                                   |
-| ```info``` | Statistical information about running server nodes.                                            |
+This package was originally based on [`denis660/laravel-centrifugo`](https://github.com/denis660/laravel-centrifugo)
+and is now independently maintained and versioned by [jestays](https://github.com/jestays). It relies on the
+official [`centrifugal/phpcent`](https://github.com/centrifugal/phpcent) client and targets
+[Centrifugo](https://centrifugal.dev/) 6+.
 
 ## License
 
-MIT License. Please read the [License File](https://github.com/denis660/laravel-centrifugo/blob/master/LICENSE) for more information.
-
-# Support the Project
-USDT wallet: ```TUYJrA9VRtXhDFooESHyT8dQSyg5zmtUg7```
-
-Network: ```TRC20```
-
-## Contributing 🤝
-Issues and pull requests are welcome.
-
-Before opening a PR:
-- run `composer test`
-- update both `README.md` and `README_RU.md` if installation steps or public behavior changed
-- keep compatibility with the supported PHP and Laravel versions
+Released under the [MIT License](LICENSE).
