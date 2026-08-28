@@ -64,6 +64,66 @@ final class CentrifugoBroadcasterTest extends TestCase
         $broadcaster->broadcast(['orders.1'], 'order.updated', ['data' => []]);
     }
 
+    public function test_broadcast_throws_broadcast_exception_on_top_level_api_error(): void
+    {
+        $client = $this->getMockBuilder(Client::class)
+            ->setConstructorArgs(['http://unused', 'api-key', 'secret'])
+            ->onlyMethods(['broadcast'])
+            ->getMock();
+
+        $client->expects($this->once())->method('broadcast')->willReturn([
+            'error' => ['code' => 102, 'message' => 'unknown channel'],
+        ]);
+
+        $broadcaster = $this->makeBroadcaster($client);
+
+        $this->expectException(BroadcastException::class);
+        $this->expectExceptionMessage('unknown channel');
+
+        $broadcaster->broadcast(['orders.1'], 'order.updated', ['data' => []]);
+    }
+
+    public function test_broadcast_throws_broadcast_exception_on_per_channel_api_error(): void
+    {
+        $client = $this->getMockBuilder(Client::class)
+            ->setConstructorArgs(['http://unused', 'api-key', 'secret'])
+            ->onlyMethods(['broadcast'])
+            ->getMock();
+
+        $client->expects($this->once())->method('broadcast')->willReturn([
+            'result' => [
+                'responses' => [
+                    ['result' => []],
+                    ['error' => ['code' => 102, 'message' => 'unknown channel']],
+                ],
+            ],
+        ]);
+
+        $broadcaster = $this->makeBroadcaster($client);
+
+        $this->expectException(BroadcastException::class);
+        $this->expectExceptionMessage('unknown channel');
+
+        $broadcaster->broadcast(['orders.1', 'orders.2'], 'order.updated', ['data' => []]);
+    }
+
+    public function test_broadcast_maps_a_non_list_channels_array_into_a_json_list(): void
+    {
+        $client = $this->getMockBuilder(Client::class)
+            ->setConstructorArgs(['http://unused', 'api-key', 'secret'])
+            ->onlyMethods(['broadcast'])
+            ->getMock();
+
+        $client->expects($this->once())
+            ->method('broadcast')
+            ->with($this->callback(static fn (array $channels): bool => array_is_list($channels) && $channels === ['private:pos.orders.1']))
+            ->willReturn(['result' => []]);
+
+        $broadcaster = $this->makeBroadcaster($client);
+
+        $broadcaster->broadcast(['first' => 'private-orders.1'], 'order.updated', ['data' => []]);
+    }
+
     public function test_auth_throws_unauthorized_for_guest(): void
     {
         $broadcaster = $this->makeBroadcaster($this->realClient());

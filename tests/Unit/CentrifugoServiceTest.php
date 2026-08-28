@@ -6,6 +6,7 @@ namespace Jestays\Centrifugo\Tests\Unit;
 
 use Jestays\Centrifugo\Centrifugo;
 use Jestays\Centrifugo\Channels\ScopedChannelMapper;
+use Jestays\Centrifugo\Exceptions\CentrifugoApiError;
 use Jestays\Centrifugo\Identity\ScopedUserMapper;
 use Jestays\Centrifugo\Tests\Support\DecodesJwt;
 use Jestays\Centrifugo\Tokens\TokenManager;
@@ -118,6 +119,33 @@ final class CentrifugoServiceTest extends TestCase
         $client->expects($this->once())->method('info')->willReturn([]);
 
         $this->makeCentrifugo($client)->info();
+    }
+
+    public function test_publish_throws_centrifugo_api_error_on_a_top_level_error_response(): void
+    {
+        $client = $this->mockClient();
+        $client->expects($this->once())->method('publish')->willReturn([
+            'error' => ['code' => 102, 'message' => 'unknown channel'],
+        ]);
+
+        $this->expectException(CentrifugoApiError::class);
+        $this->expectExceptionMessage('unknown channel');
+        $this->expectExceptionCode(102);
+
+        $this->makeCentrifugo($client)->publish('unknown-channel', ['event' => 'updated']);
+    }
+
+    public function test_channels_throws_centrifugo_api_error_on_a_top_level_error_response(): void
+    {
+        $client = $this->mockClient();
+        $client->expects($this->once())->method('channels')->willReturn([
+            'error' => ['code' => 108, 'message' => 'internal server error'],
+        ]);
+
+        $this->expectException(CentrifugoApiError::class);
+        $this->expectExceptionMessage('internal server error');
+
+        $this->makeCentrifugo($client)->channels();
     }
 
     public function test_client_escape_hatch_returns_the_underlying_client(): void

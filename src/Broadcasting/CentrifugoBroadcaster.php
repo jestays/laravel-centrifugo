@@ -57,15 +57,43 @@ final class CentrifugoBroadcaster extends Broadcaster
     {
         $payload['event'] = $event;
 
-        $mapped = array_map(
+        $mapped = array_values(array_map(
             fn (string $channel): string => $this->mapper->toCentrifugo($channel),
             $this->formatChannels($channels),
-        );
+        ));
 
         try {
-            $this->client->broadcast($mapped, $payload);
+            $response = $this->client->broadcast($mapped, $payload);
         } catch (Throwable $exception) {
             throw new BroadcastException($exception->getMessage(), 0, $exception);
         }
+
+        $this->assertBroadcastSucceeded($response);
+    }
+
+    private function assertBroadcastSucceeded(mixed $response): void
+    {
+        if (! is_array($response)) {
+            return;
+        }
+
+        if (isset($response['error'])) {
+            throw new BroadcastException($this->describeError($response['error']));
+        }
+
+        foreach ($response['result']['responses'] ?? [] as $item) {
+            if (is_array($item) && isset($item['error'])) {
+                throw new BroadcastException($this->describeError($item['error']));
+            }
+        }
+    }
+
+    private function describeError(mixed $error): string
+    {
+        if (is_array($error)) {
+            return (string) ($error['message'] ?? 'Unknown Centrifugo broadcast error.');
+        }
+
+        return (string) $error;
     }
 }
