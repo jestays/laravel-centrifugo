@@ -283,32 +283,55 @@ favour of a plain `Authorization: Bearer <token>` header.
 
 For explicit server-to-server calls, inject `Jestays\Centrifugo\Centrifugo` or use the `Centrifugo` facade.
 It accepts Laravel-style channel names and raw user IDs, and maps them internally, so business code never
-constructs a Centrifugo channel or user identity by hand:
+constructs a Centrifugo channel or user identity by hand.
+
+Channel names follow the same convention as the broadcasting side: unprefixed names map to the configured
+`public` namespace, so use the `private-` and `presence-` prefixes when targeting private or presence
+channels:
 
 ```php
 use Jestays\Centrifugo\Facades\Centrifugo;
 
-Centrifugo::publish('orders.123', ['status' => 'shipped']);
-Centrifugo::broadcast(['orders.123', 'stock.updated'], ['status' => 'shipped']);
-Centrifugo::presence('branch.10');
-Centrifugo::presenceStats('branch.10');
-Centrifugo::history('orders.123', limit: 10);
-Centrifugo::historyRemove('orders.123');
-Centrifugo::subscribe('orders.123', $userId);
-Centrifugo::unsubscribe('orders.123', $userId);
+// Public channel
+Centrifugo::publish('stock.updated', ['product' => 123]);
+// → public:pos.stock.updated
+
+// Private channel
+Centrifugo::publish('private-orders.123', ['status' => 'shipped']);
+// → private:pos.orders.123
+
+// Presence channel
+Centrifugo::presence('presence-branch.10');
+// → presence:pos.branch.10
+```
+
+The remaining methods follow the same rule:
+
+```php
+Centrifugo::broadcast(['private-orders.123', 'stock.updated'], ['status' => 'shipped']);
+Centrifugo::presenceStats('presence-branch.10');
+Centrifugo::history('private-orders.123', limit: 10);
+Centrifugo::historyRemove('private-orders.123');
+Centrifugo::subscribe('private-orders.123', $userId);   // subscribes the user to private:pos.orders.123
+Centrifugo::unsubscribe('private-orders.123', $userId);
 Centrifugo::disconnect($userId);
 Centrifugo::channels();
 Centrifugo::info();
 Centrifugo::connectionToken($user);
-Centrifugo::subscriptionToken($user, 'orders.123');
+Centrifugo::subscriptionToken($user, 'private-orders.123'); // token for private:pos.orders.123
 ```
+
+`subscriptionToken()` receives the Laravel-style name and maps it internally — never pass a raw Centrifugo
+channel such as `private:pos.orders.123`.
 
 `Centrifugo::client()` is an escape hatch that returns the underlying `\phpcent\Client` instance for anything
 this service does not wrap.
 
 Every method above throws `Jestays\Centrifugo\Exceptions\CentrifugoApiError` when Centrifugo responds with an
 HTTP 200 that still carries a top-level `error` key (Centrifugo's API-level error shape, e.g. an unknown
-channel or namespace) — callers never receive a silent error array.
+channel or namespace) — callers never receive a silent error array. `broadcast()` also inspects each
+per-channel entry inside `result.responses` and throws `CentrifugoApiError` (naming the failing channel) when
+any individual publication failed, even though the top-level response was successful.
 
 `channels()` and `info()` are server-wide operations authenticated purely by `CENTRIFUGO_API_KEY`. They are
 **not** application-scoped: on a shared Centrifugo server, `channels()` returns channels for every

@@ -2,6 +2,18 @@
 
 All notable changes to `jestays/laravel-centrifugo` are documented in this file.
 
+## 1.0.2
+
+Patch release. No breaking changes.
+
+- `Centrifugo::broadcast()` now detects per-channel errors inside `result.responses` and throws
+  `CentrifugoApiError` (naming the failing channel) instead of silently treating a partially failed
+  broadcast as successful. The Laravel broadcaster and the service now share the same per-channel
+  error detection.
+- Documented that `Centrifugo` service methods accept Laravel-style channel names: unprefixed names
+  map to the `public` namespace, while the `private-`/`presence-` prefixes target private and
+  presence channels. The README now shows explicit public, private, and presence service examples.
+
 ## 1.0.1
 
 Robustness and documentation review after the initial release. No breaking changes.
