@@ -1,5 +1,7 @@
 # Laravel Centrifugo
 
+![Laravel Centrifugo](https://raw.githubusercontent.com/jestays/cdn/refs/heads/main/laravel-centrifugo.jpeg)
+
 A Laravel broadcasting driver for [Centrifugo](https://centrifugal.dev/) 6+, built on top of the official
 [`centrifugal/phpcent`](https://github.com/centrifugal/phpcent) client.
 
