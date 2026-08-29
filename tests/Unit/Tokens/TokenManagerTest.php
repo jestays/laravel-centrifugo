@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jestays\Centrifugo\Tests\Unit\Tokens;
 
+use InvalidArgumentException;
 use Jestays\Centrifugo\Identity\ScopedUserMapper;
 use Jestays\Centrifugo\Tests\Support\DecodesJwt;
 use Jestays\Centrifugo\Tokens\TokenManager;
@@ -66,5 +67,31 @@ final class TokenManagerTest extends TestCase
         $payload = $this->decodeJwtPayload($this->tokens->connectionToken(123, 60));
 
         $this->assertEqualsWithDelta(time() + 60, $payload['exp'], 2);
+    }
+
+    public function test_rejects_a_negative_default_ttl(): void
+    {
+        $client = (new Client('http://unused'))->setSecret('secret');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('[-1]');
+
+        new TokenManager($client, new ScopedUserMapper('pos'), -1);
+    }
+
+    public function test_connection_token_rejects_a_negative_ttl(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('[-60]');
+
+        $this->tokens->connectionToken(123, -60);
+    }
+
+    public function test_subscription_token_rejects_a_negative_ttl(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('[-60]');
+
+        $this->tokens->subscriptionToken(123, 'private:pos.orders.1', -60);
     }
 }
