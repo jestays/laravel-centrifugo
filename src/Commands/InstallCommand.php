@@ -6,6 +6,7 @@ namespace Jestays\Centrifugo\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -32,7 +33,7 @@ final class InstallCommand extends Command
 
     protected function addEnvironmentVariables(): void
     {
-        if (File::missing($env = $this->laravel->environmentFilePath())) {
+        if (File::missing($env = App::environmentFilePath())) {
             return;
         }
 
@@ -74,7 +75,9 @@ final class InstallCommand extends Command
             return;
         }
 
-        if (! $this->getApplication()->has('config:publish')) {
+        $console = $this->getApplication();
+
+        if ($console === null || ! $console->has('config:publish')) {
             $this->components->warn('Skipping config:publish because it is not available. Publish config/broadcasting.php manually.');
 
             return;
@@ -156,7 +159,7 @@ final class InstallCommand extends Command
 
     protected function updateBroadcastConnection(): void
     {
-        if (File::missing($env = $this->laravel->environmentFilePath())) {
+        if (File::missing($env = App::environmentFilePath())) {
             return;
         }
 
@@ -203,7 +206,7 @@ CONFIG;
 
     protected function printSummary(): void
     {
-        $env = $this->laravel->environmentFilePath();
+        $env = App::environmentFilePath();
         $contents = File::exists($env) ? File::get($env) : '';
 
         $this->components->twoColumnDetail('Config file', 'config/centrifugo.php');
