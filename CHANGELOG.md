@@ -2,6 +2,27 @@
 
 All notable changes to `jestays/laravel-centrifugo` are documented in this file.
 
+## 1.0.1
+
+Robustness and documentation review after the initial release. No breaking changes.
+
+- Fixed the Centrifugo server configuration example in the README: Centrifugo 6 expects namespaces under
+  `channel.namespaces`, not at the top level.
+- Documented what the `public` namespace actually means (authenticated clients only, shared across
+  applications, no Laravel authorization) and why `allow_subscribe_for_anonymous` should stay off.
+- Documented the application and channel name restrictions enforced by the mappers.
+- `TokenManager` now rejects negative TTL values with an `InvalidArgumentException` instead of silently
+  issuing already-expired tokens; `0` still means "no expiration".
+- Fixed `centrifugo:install` to guard against a missing console application instance when checking for
+  `config:publish`.
+- Added integration tests that run against a real Centrifugo 6 server (opt-in via
+  `CENTRIFUGO_INTEGRATION_URL`) and a CI job that boots `centrifugo/centrifugo:v6` in Docker.
+- Added PHPStan (level 6) with a `composer analyse` script and a CI step.
+- Added a dedicated `composer audit` CI job for current dependencies, independent from the
+  compatibility matrix.
+- Added endpoint-level tests asserting that subscription tokens are refused for channels belonging to
+  another application.
+
 ## 1.0.0
 
 Initial release of `jestays/laravel-centrifugo`, an independent package based initially on

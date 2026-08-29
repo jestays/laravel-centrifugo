@@ -53,7 +53,7 @@ without a valid `CENTRIFUGO_APP`.
 `CENTRIFUGO_TOKEN_TTL` is the default time-to-live, in seconds, applied to connection and subscription tokens
 issued through `TokenManager`, the `Centrifugo` service, and the token endpoints when no explicit TTL is
 given. A TTL of `0` produces a token with no `exp` claim, i.e. a token that never expires; use that
-deliberately.
+deliberately. Negative TTL values are rejected with an `InvalidArgumentException`.
 
 `CENTRIFUGO_VERIFY` controls TLS certificate verification for the phpcent HTTP client when talking to
 `CENTRIFUGO_URL`. Keep it `true` in production; only disable it for local development against a
@@ -110,6 +110,19 @@ Every Centrifugo channel follows the same structure:
 Namespace names (`public`, `private`, `presence`) are configurable in `config/centrifugo.php`, but there is a
 single, modern naming strategy: legacy `$channel` naming is not supported.
 
+### Name restrictions
+
+- `CENTRIFUGO_APP` must match `[a-z0-9_-]+`, e.g. `pos`, `proplus`, `qms`.
+- The Laravel channel name (the part after `private-`/`presence-`, or the whole name for public channels)
+  must match `[A-Za-z0-9@,;._=-]+`. Names such as `orders.123`, `users.123.notifications`, `branch-10`, and
+  `stock_updated` are all valid.
+- Centrifugo's reserved symbols (`:`, `#`, `$`, `/`, `*`, `&`) and whitespace are rejected. This keeps
+  `<namespace>:<application>.<channel>` unambiguous and reversible when the subscription token endpoint maps
+  a Centrifugo channel back to its Laravel name.
+
+Invalid application names throw an `InvalidArgumentException` when the mappers are resolved; invalid channel
+names throw `Jestays\Centrifugo\Exceptions\InvalidCentrifugoChannel` as soon as a channel is mapped.
+
 ## Multi-application scoping
 
 The same Centrifugo server can serve multiple Laravel applications, each with its own `CENTRIFUGO_APP`:
@@ -136,25 +149,55 @@ Pro+ user 123   -> proplus:123
 
 ## Centrifugo server namespace configuration
 
-Configure matching namespaces on the Centrifugo server side, for example:
+Centrifugo 6 expects channel namespaces under the top-level `channel` key. Configure matching namespaces on
+the server side:
 
 ```json
 {
-    "namespaces": [
-        {
-            "name": "public",
-            "allow_subscribe_for_client": true
-        },
-        {
-            "name": "private"
-        },
-        {
-            "name": "presence",
-            "presence": true
-        }
-    ]
+    "channel": {
+        "namespaces": [
+            {
+                "name": "public",
+                "allow_subscribe_for_client": true
+            },
+            {
+                "name": "private"
+            },
+            {
+                "name": "presence",
+                "presence": true
+            }
+        ]
+    }
 }
 ```
+
+The same configuration as an environment variable (useful for Docker):
+
+```env
+CENTRIFUGO_CHANNEL_NAMESPACES='[{"name":"public","allow_subscribe_for_client":true},{"name":"private"},{"name":"presence","presence":true}]'
+```
+
+Subscriptions to `private:` and `presence:` channels always require a subscription token issued through your
+Laravel `Broadcast::channel()` authorization callbacks.
+
+### What `public` means
+
+`public` does **not** mean "anyone on the Internet can subscribe". Connecting to Centrifugo still requires a
+valid connection token issued to an authenticated Laravel user, and `allow_subscribe_for_client: true` only
+lets those already-authenticated, non-anonymous connections subscribe to `public:*` channels without a
+subscription token.
+
+Two consequences worth knowing:
+
+- Public channels bypass Laravel's `Broadcast::channel()` authorization entirely.
+- On a shared Centrifugo server, connection tokens from *every* application are signed with the same secret,
+  so an authenticated `proplus` user can subscribe to `public:pos.stock.updated`. Only publish data to public
+  channels that any authenticated user of any application on the server may read; use `private:` or
+  `presence:` channels otherwise.
+
+Do not enable `allow_subscribe_for_anonymous` on these namespaces: this package's design assumes every
+connection belongs to an authenticated user.
 
 ## Token endpoints
 
