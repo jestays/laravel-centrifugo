@@ -41,7 +41,7 @@ BROADCAST_CONNECTION=centrifugo
 CENTRIFUGO_URL=http://localhost:8000
 CENTRIFUGO_API_KEY=
 CENTRIFUGO_TOKEN_HMAC_SECRET_KEY=
-CENTRIFUGO_APP=pos
+CENTRIFUGO_APP=app1
 CENTRIFUGO_TOKEN_TTL=3600
 CENTRIFUGO_VERIFY=true
 ```
@@ -85,10 +85,10 @@ final class OrderUpdated implements ShouldBroadcast
 }
 ```
 
-With `CENTRIFUGO_APP=pos`, this event is published to Centrifugo as:
+With `CENTRIFUGO_APP=app1`, this event is published to Centrifugo as:
 
 ```text
-private:pos.orders.123
+private:app1.orders.123
 ```
 
 The event never needs to know about Centrifugo namespaces or application scoping.
@@ -103,16 +103,16 @@ Every Centrifugo channel follows the same structure:
 
 | Laravel channel                | Centrifugo channel            |
 |---------------------------------|--------------------------------|
-| `new Channel('stock.updated')`  | `public:pos.stock.updated`     |
-| `new PrivateChannel('user.123')`| `private:pos.user.123`         |
-| `new PresenceChannel('branch.10')`| `presence:pos.branch.10`     |
+| `new Channel('stock.updated')`  | `public:app1.stock.updated`     |
+| `new PrivateChannel('user.123')`| `private:app1.user.123`         |
+| `new PresenceChannel('branch.10')`| `presence:app1.branch.10`     |
 
 Namespace names (`public`, `private`, `presence`) are configurable in `config/centrifugo.php`, but there is a
 single, modern naming strategy: legacy `$channel` naming is not supported.
 
 ### Name restrictions
 
-- `CENTRIFUGO_APP` must match `[a-z0-9_-]+`, e.g. `pos`, `proplus`, `qms`.
+- `CENTRIFUGO_APP` must match `[a-z0-9_-]+`, e.g. `app1`, `app2`, `my-app`.
 - The Laravel channel name (the part after `private-`/`presence-`, or the whole name for public channels)
   must match `[A-Za-z0-9@,;._=-]+`. Names such as `orders.123`, `users.123.notifications`, `branch-10`, and
   `stock_updated` are all valid.
@@ -128,9 +128,9 @@ names throw `Jestays\Centrifugo\Exceptions\InvalidCentrifugoChannel` as soon as 
 The same Centrifugo server can serve multiple Laravel applications, each with its own `CENTRIFUGO_APP`:
 
 ```text
-private:pos.orders.123
-private:proplus.orders.123
-private:qms.orders.123
+private:app1.orders.123
+private:app2.orders.123
+private:app3.orders.123
 ```
 
 An application can never request a subscription token for a channel that belongs to another application.
@@ -143,8 +143,8 @@ Authenticated Laravel users are mapped to Centrifugo user identifiers scoped by 
 Laravel user ID never collides across applications:
 
 ```text
-POS user 123    -> pos:123
-Pro+ user 123   -> proplus:123
+app1 user 123   -> app1:123
+app2 user 123   -> app2:123
 ```
 
 ## Centrifugo server namespace configuration
@@ -192,7 +192,7 @@ Two consequences worth knowing:
 
 - Public channels bypass Laravel's `Broadcast::channel()` authorization entirely.
 - On a shared Centrifugo server, connection tokens from *every* application are signed with the same secret,
-  so an authenticated `proplus` user can subscribe to `public:pos.stock.updated`. Only publish data to public
+  so an authenticated `app2` user can subscribe to `public:app1.stock.updated`. Only publish data to public
   channels that any authenticated user of any application on the server may read; use `private:` or
   `presence:` channels otherwise.
 
@@ -209,7 +209,7 @@ The package optionally registers two routes (enabled by default, see `config/cen
 | POST   | `/centrifugo/subscription-token`    | Issues a Centrifugo subscription token|
 
 The subscription token endpoint expects a `channel` field containing the Centrifugo channel name (e.g.
-`private:pos.orders.123`). It maps the channel back to its Laravel name (`orders.123`) and runs it through
+`private:app1.orders.123`). It maps the channel back to its Laravel name (`orders.123`) and runs it through
 your normal `Broadcast::channel()` authorization callbacks before issuing a token.
 
 ### Routes configuration
@@ -267,8 +267,8 @@ const centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
     getToken: () => fetchToken('/centrifugo/connection-token'),
 });
 
-const subscription = centrifuge.newSubscription('private:pos.orders.123', {
-    getToken: () => fetchToken('/centrifugo/subscription-token', { channel: 'private:pos.orders.123' }),
+const subscription = centrifuge.newSubscription('private:app1.orders.123', {
+    getToken: () => fetchToken('/centrifugo/subscription-token', { channel: 'private:app1.orders.123' }),
 });
 
 centrifuge.connect();
@@ -294,15 +294,15 @@ use Jestays\Centrifugo\Facades\Centrifugo;
 
 // Public channel
 Centrifugo::publish('stock.updated', ['product' => 123]);
-// → public:pos.stock.updated
+// → public:app1.stock.updated
 
 // Private channel
 Centrifugo::publish('private-orders.123', ['status' => 'shipped']);
-// → private:pos.orders.123
+// → private:app1.orders.123
 
 // Presence channel
 Centrifugo::presence('presence-branch.10');
-// → presence:pos.branch.10
+// → presence:app1.branch.10
 ```
 
 The remaining methods follow the same rule:
@@ -312,17 +312,17 @@ Centrifugo::broadcast(['private-orders.123', 'stock.updated'], ['status' => 'shi
 Centrifugo::presenceStats('presence-branch.10');
 Centrifugo::history('private-orders.123', limit: 10);
 Centrifugo::historyRemove('private-orders.123');
-Centrifugo::subscribe('private-orders.123', $userId);   // subscribes the user to private:pos.orders.123
+Centrifugo::subscribe('private-orders.123', $userId);   // subscribes the user to private:app1.orders.123
 Centrifugo::unsubscribe('private-orders.123', $userId);
 Centrifugo::disconnect($userId);
 Centrifugo::channels();
 Centrifugo::info();
 Centrifugo::connectionToken($user);
-Centrifugo::subscriptionToken($user, 'private-orders.123'); // token for private:pos.orders.123
+Centrifugo::subscriptionToken($user, 'private-orders.123'); // token for private:app1.orders.123
 ```
 
 `subscriptionToken()` receives the Laravel-style name and maps it internally — never pass a raw Centrifugo
-channel such as `private:pos.orders.123`.
+channel such as `private:app1.orders.123`.
 
 `Centrifugo::client()` is an escape hatch that returns the underlying `\phpcent\Client` instance for anything
 this service does not wrap.
