@@ -28,6 +28,29 @@ jobs:
       - name: Check code style
         run: vendor/bin/pint --test
 
+      - name: Run static analysis
+        run: vendor/bin/phpstan analyse --no-progress
+
+  audit:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Audit dependencies
+        run: composer audit
+
   test:
     needs: lint
 
@@ -85,3 +108,48 @@ jobs:
 
       - name: Run tests
         run: vendor/bin/phpunit
+
+  integration:
+    needs: lint
+
+    timeout-minutes: 5
+
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Start Centrifugo
+        run: |
+          docker run -d --name centrifugo -p 8000:8000 \
+            -e CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY=integration-secret \
+            -e CENTRIFUGO_HTTP_API_KEY=integration-api-key \
+            -e CENTRIFUGO_CHANNEL_NAMESPACES='[{"name":"public","allow_subscribe_for_client":true},{"name":"private"},{"name":"presence","presence":true}]' \
+            -e CENTRIFUGO_HEALTH_ENABLED=true \
+            centrifugo/centrifugo:v6 centrifugo
+
+      - name: Wait for Centrifugo
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8000/health > /dev/null 2>&1 && exit 0
+            sleep 1
+          done
+          docker logs centrifugo
+          exit 1
+
+      - name: Run integration tests
+        env:
+          CENTRIFUGO_INTEGRATION_URL: http://localhost:8000
+        run: vendor/bin/phpunit tests/Integration
