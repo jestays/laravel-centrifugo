@@ -10,8 +10,22 @@ final class CentrifugoApiError extends RuntimeException
 {
     public static function fromResponse(array $response): self
     {
-        $error = $response['error'] ?? null;
+        return self::fromError($response['error'] ?? null);
+    }
 
+    public static function forBroadcastChannel(mixed $error, ?string $channel): self
+    {
+        $base = self::fromError($error);
+
+        if ($channel === null) {
+            return $base;
+        }
+
+        return new self("{$base->getMessage()} (channel: {$channel})", $base->getCode());
+    }
+
+    private static function fromError(mixed $error): self
+    {
         if (is_array($error)) {
             return new self(
                 (string) ($error['message'] ?? 'Unknown Centrifugo API error.'),

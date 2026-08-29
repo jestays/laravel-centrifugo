@@ -8,6 +8,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Jestays\Centrifugo\Channels\ChannelMapper;
 use Jestays\Centrifugo\Exceptions\CentrifugoApiError;
 use Jestays\Centrifugo\Identity\UserMapper;
+use Jestays\Centrifugo\Support\BroadcastResponse;
 use Jestays\Centrifugo\Tokens\TokenManager;
 use phpcent\Client;
 
@@ -27,9 +28,17 @@ final class Centrifugo
 
     public function broadcast(array $channels, array $data, bool $skipHistory = false): array
     {
-        $mapped = array_map(fn (string $channel): string => $this->channels->toCentrifugo($channel), $channels);
+        $mapped = array_values(array_map(fn (string $channel): string => $this->channels->toCentrifugo($channel), $channels));
 
-        return $this->assertSuccessful($this->client->broadcast($mapped, $data, $skipHistory));
+        $response = $this->assertSuccessful($this->client->broadcast($mapped, $data, $skipHistory));
+
+        $failure = BroadcastResponse::firstError($response);
+
+        if ($failure !== null) {
+            throw CentrifugoApiError::forBroadcastChannel($failure['error'], $mapped[$failure['index']] ?? null);
+        }
+
+        return $response;
     }
 
     public function presence(string $channel): array

@@ -135,6 +135,56 @@ final class CentrifugoServiceTest extends TestCase
         $this->makeCentrifugo($client)->publish('unknown-channel', ['event' => 'updated']);
     }
 
+    public function test_broadcast_returns_response_when_all_per_channel_responses_succeed(): void
+    {
+        $response = [
+            'result' => [
+                'responses' => [
+                    ['result' => []],
+                    ['result' => []],
+                ],
+            ],
+        ];
+
+        $client = $this->mockClient();
+        $client->expects($this->once())->method('broadcast')->willReturn($response);
+
+        $this->assertSame($response, $this->makeCentrifugo($client)->broadcast(['private-orders.1', 'stock'], ['event' => 'updated']));
+    }
+
+    public function test_broadcast_throws_centrifugo_api_error_on_a_top_level_error_response(): void
+    {
+        $client = $this->mockClient();
+        $client->expects($this->once())->method('broadcast')->willReturn([
+            'error' => ['code' => 100, 'message' => 'internal server error'],
+        ]);
+
+        $this->expectException(CentrifugoApiError::class);
+        $this->expectExceptionMessage('internal server error');
+        $this->expectExceptionCode(100);
+
+        $this->makeCentrifugo($client)->broadcast(['private-orders.1', 'stock'], ['event' => 'updated']);
+    }
+
+    public function test_broadcast_throws_centrifugo_api_error_on_a_per_channel_error_response(): void
+    {
+        $client = $this->mockClient();
+        $client->expects($this->once())->method('broadcast')->willReturn([
+            'result' => [
+                'responses' => [
+                    ['result' => []],
+                    ['error' => ['code' => 102, 'message' => 'unknown channel']],
+                ],
+            ],
+        ]);
+
+        $this->expectException(CentrifugoApiError::class);
+        $this->expectExceptionMessage('unknown channel (channel: public:pos.stock)');
+        $this->expectExceptionCode(102);
+
+        $this->makeCentrifugo($client)->broadcast(['private-orders.1', 'stock'], ['event' => 'updated']);
+    }
+
     public function test_channels_throws_centrifugo_api_error_on_a_top_level_error_response(): void
     {
         $client = $this->mockClient();

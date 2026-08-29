@@ -8,6 +8,7 @@ use Illuminate\Broadcasting\Broadcasters\Broadcaster;
 use Illuminate\Broadcasting\BroadcastException;
 use Jestays\Centrifugo\Channels\ChannelMapper;
 use Jestays\Centrifugo\Exceptions\InvalidCentrifugoChannel;
+use Jestays\Centrifugo\Support\BroadcastResponse;
 use Jestays\Centrifugo\Tokens\TokenManager;
 use phpcent\Client;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -81,10 +82,10 @@ final class CentrifugoBroadcaster extends Broadcaster
             throw new BroadcastException($this->describeError($response['error']));
         }
 
-        foreach ($response['result']['responses'] ?? [] as $item) {
-            if (is_array($item) && isset($item['error'])) {
-                throw new BroadcastException($this->describeError($item['error']));
-            }
+        $failure = BroadcastResponse::firstError($response);
+
+        if ($failure !== null) {
+            throw new BroadcastException($this->describeError($failure['error']));
         }
     }
 
