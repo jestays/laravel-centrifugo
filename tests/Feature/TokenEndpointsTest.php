@@ -63,6 +63,28 @@ final class TokenEndpointsTest extends TestCase
         $response->assertForbidden();
     }
 
+    public function test_subscription_token_endpoint_rejects_private_channels_of_another_application(): void
+    {
+        Broadcast::channel('orders.{id}', static fn ($user, int $id): bool => true);
+
+        $response = $this->actingAs($this->user(1))->postJson('/centrifugo/subscription-token', [
+            'channel' => 'private:proplus.orders.1',
+        ]);
+
+        $response->assertForbidden();
+    }
+
+    public function test_subscription_token_endpoint_rejects_presence_channels_of_another_application(): void
+    {
+        Broadcast::channel('branch.{id}', static fn ($user, int $id): array => ['id' => $user->getAuthIdentifier()]);
+
+        $response = $this->actingAs($this->user(1))->postJson('/centrifugo/subscription-token', [
+            'channel' => 'presence:qms.branch.10',
+        ]);
+
+        $response->assertForbidden();
+    }
+
     public function test_subscription_token_endpoint_requires_the_channel_field(): void
     {
         $response = $this->actingAs($this->user(1))->postJson('/centrifugo/subscription-token');
